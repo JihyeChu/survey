@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Form Clone</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header Navigation -->
+        <header class="header">
+            <div class="header-content">
+                <!-- Form Title Tab -->
+                <div class="header-title" id="tab-title">
+                    <span class="form-title-text">새 설문지</span>
+                </div>
+
+                <!-- Navigation Tabs -->
+                <nav class="header-tabs">
+                    <button class="tab-button active" data-tab="questions" id="tab-questions">
+                        질문
+                    </button>
+                    <button class="tab-button" data-tab="responses" id="tab-responses">
+                        응답
+                    </button>
+                    <button class="tab-button" data-tab="settings" id="tab-settings">
+                        설정
+                    </button>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Questions View -->
+            <section class="view active" id="view-questions">
+                <div class="builder-header">
+                    <button class="btn btn-secondary" id="preview-toggle">
+                        <span>미리보기</span>
+                    </button>
+                </div>
+
+                <div id="preview-mode" class="preview-mode-hidden">
+                    <!-- Builder Mode Content -->
+                    <div class="builder-container" id="builder-container">
+                        <div class="questions-list" id="questions-list">
+                            <!-- Questions will be inserted here -->
+                        </div>
+
+                        <!-- Floating Add Button -->
+                        <button class="btn btn-add-question" id="add-question-btn" title="질문 추가">
+                            <span class="plus-icon">+</span>
+                        </button>
+                    </div>
+
+                    <!-- Right-side Question Type Selector -->
+                    <div class="question-type-selector" id="question-type-selector">
+                        <h3>질문 유형</h3>
+                        <div class="question-types-list">
+                            <button class="question-type-btn" data-type="short-text" title="단답형">
+                                <span class="type-icon">≡</span>
+                                <span>단답형</span>
+                            </button>
+                            <button class="question-type-btn" data-type="long-text" title="장문형">
+                                <span class="type-icon">≡≡</span>
+                                <span>장문형</span>
+                            </button>
+                            <button class="question-type-btn" data-type="multiple-choice" title="객관식">
+                                <span class="type-icon">◯</span>
+                                <span>객관식</span>
+                            </button>
+                            <button class="question-type-btn" data-type="checkbox" title="체크박스">
+                                <span class="type-icon">☑</span>
+                                <span>체크박스</span>
+                            </button>
+                            <button class="question-type-btn" data-type="dropdown" title="드롭다운">
+                                <span class="type-icon">▼</span>
+                                <span>드롭다운</span>
+                            </button>
+                            <button class="question-type-btn" data-type="file-upload" title="파일 업로드">
+                                <span class="type-icon">📎</span>
+                                <span>파일 업로드</span>
+                            </button>
+                            <button class="question-type-btn" data-type="linear-scale" title="선형 배율">
+                                <span class="type-icon">▬</span>
+                                <span>선형 배율</span>
+                            </button>
+                            <button class="question-type-btn" data-type="date" title="날짜">
+                                <span class="type-icon">📅</span>
+                                <span>날짜</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview Mode Content -->
+                <div id="preview-content" class="preview-content-hidden">
+                    <div class="preview-container" id="preview-container">
+                        <!-- Preview will be rendered here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Responses View -->
+            <section class="view" id="view-responses">
+                <div class="view-placeholder">
+                    <h2>응답</h2>
+                    <p>응답 보기 영역입니다.</p>
+                </div>
+            </section>
+
+            <!-- Settings View -->
+            <section class="view" id="view-settings">
+                <div class="view-placeholder">
+                    <h2>설정</h2>
+                    <p>폼 설정 영역입니다.</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
