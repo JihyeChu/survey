@@ -1,0 +1,429 @@
+/**
+ * Google Form Clone - API Service
+ * Backend 통신을 위한 API 레이어
+ */
+
+(function() {
+    'use strict';
+
+    const API_BASE_URL = 'http://localhost:8080/api';
+
+    /**
+     * API 요청 헬퍼
+     */
+    async function request(endpoint, options = {}) {
+        const url = `${API_BASE_URL}${endpoint}`;
+        const config = {
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            ...options,
+        };
+
+        try {
+            const response = await fetch(url, config);
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.message || `HTTP ${response.status}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error(`API Error [${endpoint}]:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Form API
+     */
+    const FormAPI = {
+        /**
+         * 새 폼 생성 (게시)
+         * @param {Object} formData - 폼 데이터
+         * @returns {Promise<Object>} 생성된 폼
+         */
+        async create(formData) {
+            return request('/forms', {
+                method: 'POST',
+                body: JSON.stringify(formData),
+            });
+        },
+
+        /**
+         * 모든 폼 목록 조회
+         * @returns {Promise<Array>} 폼 목록
+         */
+        async list() {
+            return request('/forms');
+        },
+
+        /**
+         * 폼 상세 조회
+         * @param {string} formId - 폼 ID
+         * @returns {Promise<Object>} 폼 데이터
+         */
+        async get(formId) {
+            return request(`/forms/${formId}`);
+        },
+
+        /**
+         * 폼 수정
+         * @param {string} formId - 폼 ID
+         * @param {Object} formData - 수정할 데이터
+         * @returns {Promise<Object>} 수정된 폼
+         */
+        async update(formId, formData) {
+            return request(`/forms/${formId}`, {
+                method: 'PUT',
+                body: JSON.stringify(formData),
+            });
+        },
+
+        /**
+         * 폼 삭제
+         * @param {string} formId - 폼 ID
+         * @returns {Promise<Object>} 삭제 결과
+         */
+        async delete(formId) {
+            return request(`/forms/${formId}`, {
+                method: 'DELETE',
+            });
+        },
+    };
+
+    /**
+     * Question API
+     */
+    const QuestionAPI = {
+        /**
+         * 질문 추가
+         * @param {string} formId - 폼 ID
+         * @param {Object} questionData - 질문 데이터
+         * @returns {Promise<Object>} 생성된 질문
+         */
+        async add(formId, questionData) {
+            return request(`/forms/${formId}/questions`, {
+                method: 'POST',
+                body: JSON.stringify(questionData),
+            });
+        },
+
+        /**
+         * 질문 수정
+         * @param {string} questionId - 질문 ID
+         * @param {Object} questionData - 수정할 데이터
+         * @returns {Promise<Object>} 수정된 질문
+         */
+        async update(questionId, questionData) {
+            return request(`/questions/${questionId}`, {
+                method: 'PUT',
+                body: JSON.stringify(questionData),
+            });
+        },
+
+        /**
+         * 질문 삭제
+         * @param {string} questionId - 질문 ID
+         * @returns {Promise<Object>} 삭제 결과
+         */
+        async delete(questionId) {
+            return request(`/questions/${questionId}`, {
+                method: 'DELETE',
+            });
+        },
+
+    };
+
+    /**
+     * Response API
+     */
+    const ResponseAPI = {
+        /**
+         * 응답 제출
+         * @param {string} formId - 폼 ID
+         * @param {Array} answers - 응답 데이터
+         * @returns {Promise<Object>} 생성된 응답
+         */
+        async submit(formId, answers) {
+            return request(`/forms/${formId}/responses`, {
+                method: 'POST',
+                body: JSON.stringify({ answers }),
+            });
+        },
+
+        /**
+         * 응답 목록 조회
+         * @param {string} formId - 폼 ID
+         * @returns {Promise<Array>} 응답 목록
+         */
+        async list(formId) {
+            return request(`/forms/${formId}/responses`);
+        },
+    };
+
+    /**
+     * Persistence Manager
+     * Draft(localStorage)와 Published(Backend) 상태 관리
+     */
+    const PersistenceManager = {
+        /**
+         * 현재 폼이 게시됨 상태인지 확인
+         * @returns {boolean}
+         */
+        isPublished() {
+            const form = window.FormApp?.getForm();
+            return form && form.publishedId ? true : false;
+        },
+
+        /**
+         * 폼 게시 (서버에 저장)
+         * @returns {Promise<Object>} 게시된 폼
+         */
+        async publish() {
+            const form = window.FormApp?.getForm();
+            if (!form) throw new Error('폼 데이터가 없습니다.');
+
+            // 서버용 데이터 변환
+            const formData = this._transformFormForServer(form);
+
+            let result;
+            if (form.publishedId) {
+                // 기존 게시된 폼 업데이트
+                result = await FormAPI.update(form.publishedId, formData);
+            } else {
+                // 새로 게시
+                result = await FormAPI.create(formData);
+            }
+
+            // publishedId 저장
+            form.publishedId = result.id;
+            form.publishedAt = new Date().toISOString();
+
+            // 서버에서 반환된 질문 ID를 serverId로 저장 (첨부파일 업로드에 필요)
+            // 기존 프론트엔드 id는 유지
+            if (result.questions && result.questions.length > 0) {
+                form.questions = form.questions.map((localQ, idx) => {
+                    const serverQ = result.questions[idx];
+                    if (serverQ) {
+                        return {
+                            ...localQ,
+                            serverId: serverQ.id,  // 서버의 Long ID를 별도 필드에 저장
+                            attachmentFilename: serverQ.attachmentFilename || localQ.attachmentFilename,
+                            attachmentStoredName: serverQ.attachmentStoredName || localQ.attachmentStoredName,
+                            attachmentContentType: serverQ.attachmentContentType || localQ.attachmentContentType
+                        };
+                    }
+                    return localQ;
+                });
+            }
+
+            window.FormApp?.saveForm(form);
+
+            // 대기 중인 첨부파일 업로드
+            await this._uploadPendingAttachments(form);
+
+            return result;
+        },
+
+        /**
+         * 대기 중인 첨부파일 서버에 업로드
+         * @param {Object} form - 폼 데이터
+         */
+        async _uploadPendingAttachments(form) {
+            const questionsWithPending = form.questions.filter(q => q.pendingAttachment);
+
+            if (questionsWithPending.length === 0) {
+                console.log('[Publish] No pending attachments to upload');
+                return;
+            }
+
+            console.log(`[Publish] Uploading ${questionsWithPending.length} pending attachment(s)...`);
+
+            for (const question of questionsWithPending) {
+                if (!question.serverId) {
+                    console.warn('[Publish] Question has no serverId, skipping attachment:', question.id);
+                    continue;
+                }
+
+                try {
+                    // Base64를 Blob으로 변환
+                    const base64Data = question.pendingAttachment.base64Data;
+                    const blob = await this._base64ToBlob(base64Data);
+                    const file = new File([blob], question.pendingAttachment.filename, {
+                        type: question.pendingAttachment.contentType
+                    });
+
+                    // 서버에 업로드
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch(`/api/forms/${form.publishedId}/questions/${question.serverId}/attachment`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const updatedQuestion = await response.json();
+
+                    // 상태 업데이트
+                    const qIdx = form.questions.findIndex(q => q.id === question.id);
+                    if (qIdx >= 0) {
+                        form.questions[qIdx] = {
+                            ...form.questions[qIdx],
+                            pendingAttachment: null,
+                            attachmentFilename: updatedQuestion.attachmentFilename,
+                            attachmentStoredName: updatedQuestion.attachmentStoredName,
+                            attachmentContentType: updatedQuestion.attachmentContentType,
+                            attachmentPreviewUrl: null
+                        };
+                    }
+
+                    console.log('[Publish] Uploaded attachment for question:', question.id);
+                } catch (error) {
+                    console.error('[Publish] Failed to upload attachment for question:', question.id, error);
+                }
+            }
+
+            // 최종 상태 저장
+            window.FormApp?.saveForm(form);
+            // UI 갱신
+            if (window.FormApp?.renderQuestions) {
+                window.FormApp.renderQuestions();
+            }
+        },
+
+        /**
+         * Base64 데이터 URL을 Blob으로 변환
+         * @param {string} base64 - Base64 데이터 URL
+         * @returns {Promise<Blob>} Blob 객체
+         */
+        async _base64ToBlob(base64) {
+            const response = await fetch(base64);
+            return response.blob();
+        },
+
+        /**
+         * 서버에서 폼 불러오기
+         * @param {string} formId - 서버 폼 ID
+         * @returns {Promise<Object>} 로드된 폼
+         */
+        async load(formId) {
+            const serverForm = await FormAPI.get(formId);
+            const localForm = this._transformFormFromServer(serverForm);
+
+            window.FormApp?.saveForm(localForm);
+            return localForm;
+        },
+
+        /**
+         * 로컬 폼을 서버 형식으로 변환
+         * config 필드에 옵션(RADIO/CHECKBOX)과 스케일 설정(LINEAR) 통합 저장
+         */
+        _transformFormForServer(form) {
+            return {
+                title: form.title,
+                description: form.description || '',
+                settings: form.settings || {},
+                questions: (form.questions || []).map((q, idx) => {
+                    let config = null;
+
+                    // LINEAR 타입: scaleConfig 사용
+                    if (q.type === 'linear-scale' && q.scaleConfig) {
+                        config = q.scaleConfig;
+                    }
+                    // RADIO/CHECKBOX 타입: options 배열을 config.options로 변환
+                    else if ((q.type === 'multiple-choice' || q.type === 'checkbox') && q.options && q.options.length > 0) {
+                        config = {
+                            options: q.options.map((opt, optIdx) => ({
+                                id: opt.id || `opt_${optIdx}`,
+                                label: opt.label,
+                            })),
+                        };
+                    }
+
+                    return {
+                        type: q.type,
+                        title: q.title,
+                        description: q.description || '',
+                        required: q.required || false,
+                        orderIndex: idx,
+                        config: config,
+                    };
+                }),
+            };
+        },
+
+        /**
+         * 서버 폼을 로컬 형식으로 변환
+         * config 필드에서 옵션과 스케일 설정 분리
+         */
+        _transformFormFromServer(serverForm) {
+            return {
+                id: window.FormApp?.getForm()?.id || serverForm.id,
+                publishedId: serverForm.id,
+                title: serverForm.title,
+                description: serverForm.description || '',
+                createdAt: serverForm.createdAt,
+                updatedAt: serverForm.updatedAt,
+                publishedAt: new Date().toISOString(),
+                questions: (serverForm.questions || []).map(q => {
+                    let parsedConfig = null;
+                    if (q.config) {
+                        try {
+                            parsedConfig = typeof q.config === 'string' ? JSON.parse(q.config) : q.config;
+                        } catch (e) {
+                            console.warn('Failed to parse config:', e);
+                        }
+                    }
+
+                    // config에서 옵션과 스케일 설정 분리
+                    let options = [];
+                    let scaleConfig = null;
+
+                    if (parsedConfig) {
+                        if (parsedConfig.options) {
+                            // RADIO/CHECKBOX 타입
+                            options = parsedConfig.options.map((opt, idx) => ({
+                                id: opt.id || `opt_${idx}`,
+                                label: opt.label,
+                                order: idx,
+                            }));
+                        } else if (parsedConfig.min !== undefined || parsedConfig.max !== undefined) {
+                            // LINEAR 타입
+                            scaleConfig = parsedConfig;
+                        }
+                    }
+
+                    return {
+                        id: q.id,
+                        type: q.type,
+                        title: q.title,
+                        description: q.description || '',
+                        required: q.required,
+                        order: q.orderIndex,
+                        scaleConfig: scaleConfig,
+                        options: options,
+                        // Question Attachment fields (read-only for respondents)
+                        attachmentFilename: q.attachmentFilename,
+                        attachmentStoredName: q.attachmentStoredName,
+                        attachmentContentType: q.attachmentContentType,
+                    };
+                }),
+                settings: serverForm.settings || {},
+                responses: [],
+            };
+        },
+    };
+
+    // Public API 노출
+    window.FormAPI = FormAPI;
+    window.QuestionAPI = QuestionAPI;
+    window.ResponseAPI = ResponseAPI;
+    window.PersistenceManager = PersistenceManager;
+
+})();

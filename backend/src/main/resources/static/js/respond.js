@@ -1,0 +1,1053 @@
+/**
+ * Google Form Clone - Respondent View
+ * Response form rendering and submission
+ */
+
+(function() {
+    'use strict';
+
+    const API_BASE_URL = 'http://localhost:8080/api';
+
+    // ========================================================
+    // DOM ELEMENTS
+    // ========================================================
+    const elements = {
+        loadingIndicator: document.getElementById('loading-indicator'),
+        formContainer: document.getElementById('form-container'),
+        formHeader: document.getElementById('form-header'),
+        formTitle: document.getElementById('form-title'),
+        formDescription: document.getElementById('form-description'),
+        respondForm: document.getElementById('respond-form'),
+        emailFieldContainer: document.getElementById('email-field-container'),
+        respondentEmail: document.getElementById('respondent-email'),
+        questionsContainer: document.getElementById('questions-container'),
+        progressFill: document.getElementById('progress-fill'),
+        submitBtn: document.getElementById('submit-btn'),
+        submitBtnText: document.getElementById('submit-btn-text'),
+        errorBanner: document.getElementById('error-banner'),
+        errorMessage: document.getElementById('error-message'),
+        errorCloseBtn: document.getElementById('error-close-btn'),
+        successScreen: document.getElementById('success-screen')
+    };
+
+    // ========================================================
+    // STATE MANAGEMENT
+    // ========================================================
+    let formData = null;
+    let responses = {};  // questionId -> value
+    let respondentEmail = '';  // 응답자 이메일
+
+    // ========================================================
+    // INITIALIZATION
+    // ========================================================
+    async function init() {
+        try {
+            const formId = getFormIdFromUrl();
+            if (!formId) {
+                showError('폼 ID가 유효하지 않습니다.');
+                return;
+            }
+
+            showLoading(true);
+            await loadForm(formId);
+            renderForm();
+            setupEventListeners();
+        } catch (error) {
+            console.error('Error initializing form:', error);
+            showError('폼을 불러오는 데 실패했습니다. 다시 시도해주세요.');
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    // ========================================================
+    // FORM LOADING
+    // ========================================================
+    function getFormIdFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('formId');
+    }
+
+    async function loadForm(formId) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/forms/${formId}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            formData = await response.json();
+
+            if (!formData) {
+                throw new Error('폼 데이터가 없습니다.');
+            }
+        } catch (error) {
+            console.error('Error loading form:', error);
+            throw new Error('폼을 불러오지 못했습니다.');
+        }
+    }
+
+    // ========================================================
+    // FORM RENDERING
+    // ========================================================
+    function renderForm() {
+        if (!formData) return;
+
+        // 폼 헤더 렌더링
+        renderFormHeader();
+
+        // 이메일 필드 렌더링
+        renderEmailField();
+
+        // 질문 렌더링
+        renderQuestions();
+
+        // 초기 진행률 업데이트
+        updateProgress();
+    }
+
+    function renderFormHeader() {
+        elements.formTitle.textContent = formData.title || '제목 없음';
+        elements.formDescription.textContent = formData.description || '';
+    }
+
+    function renderEmailField() {
+        // formSettings에서 collectEmail 설정 확인
+        const settings = formData.settings || {};
+        const collectEmail = settings.collectEmail || false;
+
+        if (collectEmail) {
+            elements.emailFieldContainer.style.display = 'block';
+            elements.respondentEmail.addEventListener('input', (e) => {
+                respondentEmail = e.target.value;
+                updateProgress();
+            });
+        } else {
+            elements.emailFieldContainer.style.display = 'none';
+            elements.respondentEmail.required = false;
+        }
+    }
+
+    function renderQuestions() {
+        elements.questionsContainer.innerHTML = '';
+
+        const questions = formData.questions || [];
+        questions.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+
+        questions.forEach((question, index) => {
+            const questionCard = createQuestionCard(question, index);
+            elements.questionsContainer.appendChild(questionCard);
+        });
+
+        // 제출 버튼 활성화
+        elements.submitBtn.disabled = false;
+    }
+
+    function createQuestionCard(question, index) {
+        const card = document.createElement('div');
+        card.className = 'respond-question-card';
+        card.setAttribute('data-question-id', question.id);
+
+        // 헤더
+        const header = document.createElement('div');
+        header.className = 'respond-question-header';
+
+        const title = document.createElement('h3');
+        title.className = 'respond-question-title';
+        title.innerHTML = escapeHtml(question.title || `질문 ${index + 1}`);
+
+        if (question.required) {
+            const required = document.createElement('span');
+            required.className = 'respond-question-required';
+            required.textContent = '*';
+            required.title = '필수 항목';
+            title.appendChild(required);
+        }
+
+        header.appendChild(title);
+
+        if (question.description) {
+            const description = document.createElement('p');
+            description.className = 'respond-question-description';
+            description.textContent = question.description;
+            header.appendChild(description);
+        }
+
+        card.appendChild(header);
+
+        // 질문 첨부파일 표시
+        if (question.attachmentStoredName) {
+            const attachmentElement = createAttachmentElement(question);
+            card.appendChild(attachmentElement);
+        }
+
+        // 입력 필드
+        const content = document.createElement('div');
+        content.className = 'respond-question-content';
+        createQuestionInput(question, content);
+        card.appendChild(content);
+
+        return card;
+    }
+
+    /**
+     * Create attachment display element (image or file download link)
+     */
+    function createAttachmentElement(question) {
+        const attachmentContainer = document.createElement('div');
+        attachmentContainer.className = 'respond-question-attachment';
+
+        const fileExtension = getFileExtension(question.attachmentStoredName);
+        const isImage = isImageFile(fileExtension);
+
+        // Get formId from URL
+        const formId = getFormIdFromUrl();
+
+        if (isImage) {
+            // Display image
+            const img = document.createElement('img');
+            img.className = 'respond-attachment-image';
+            img.src = `/api/forms/${formId}/questions/${question.id}/attachment`;
+            img.alt = question.title || 'Attachment image';
+            img.onerror = () => {
+                // Fallback to download link if image fails to load
+                attachmentContainer.innerHTML = '';
+                createDownloadLink(attachmentContainer, question, formId);
+            };
+            attachmentContainer.appendChild(img);
+        } else {
+            // Display download link for non-image files
+            createDownloadLink(attachmentContainer, question, formId);
+        }
+
+        return attachmentContainer;
+    }
+
+    /**
+     * Create download link for file attachments
+     */
+    function createDownloadLink(container, question, formId) {
+        const linkWrapper = document.createElement('div');
+        linkWrapper.className = 'respond-attachment-download';
+
+        const link = document.createElement('a');
+        link.className = 'respond-attachment-link';
+        link.href = `/api/forms/${formId}/questions/${question.id}/attachment`;
+        link.download = question.attachmentFilename || question.attachmentStoredName;
+        link.target = '_blank';
+
+        const icon = document.createElement('span');
+        icon.className = 'respond-attachment-icon';
+        icon.textContent = '📎';
+
+        const text = document.createElement('span');
+        text.className = 'respond-attachment-filename';
+        text.textContent = question.attachmentFilename || question.attachmentStoredName;
+
+        link.appendChild(icon);
+        link.appendChild(text);
+        linkWrapper.appendChild(link);
+        container.appendChild(linkWrapper);
+    }
+
+    /**
+     * Get file extension from filename
+     */
+    function getFileExtension(filename) {
+        if (!filename) return '';
+        const lastDot = filename.lastIndexOf('.');
+        return lastDot > 0 ? filename.substring(lastDot + 1).toLowerCase() : '';
+    }
+
+    /**
+     * Check if file is an image based on extension
+     */
+    function isImageFile(extension) {
+        const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+        return imageExtensions.includes(extension);
+    }
+
+    function createQuestionInput(question, container) {
+        const questionId = question.id;
+
+        switch (question.type) {
+            case 'short-text':
+                createTextInput(questionId, container);
+                break;
+            case 'long-text':
+                createTextareaInput(questionId, container);
+                break;
+            case 'multiple-choice':
+                createRadioOptions(question, container);
+                break;
+            case 'checkbox':
+                createCheckboxOptions(question, container);
+                break;
+            case 'dropdown':
+                createSelectInput(question, container);
+                break;
+            case 'file-upload':
+                createFileUploadInput(question, container);
+                break;
+            case 'date':
+                createDateInput(questionId, container);
+                break;
+            case 'linear-scale':
+                createLinearScale(question, container);
+                break;
+            default:
+                createTextInput(questionId, container);
+        }
+    }
+
+    function createTextInput(questionId, container) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'respond-text-input';
+        input.name = `q_${questionId}`;
+        input.placeholder = '응답 입력...';
+        input.addEventListener('input', (e) => {
+            responses[questionId] = e.target.value;
+            updateProgress();
+            clearQuestionError(questionId);
+        });
+        container.appendChild(input);
+    }
+
+    function createTextareaInput(questionId, container) {
+        const textarea = document.createElement('textarea');
+        textarea.className = 'respond-textarea-input';
+        textarea.name = `q_${questionId}`;
+        textarea.placeholder = '응답 입력...';
+        textarea.addEventListener('input', (e) => {
+            responses[questionId] = e.target.value;
+            updateProgress();
+            clearQuestionError(questionId);
+        });
+        container.appendChild(textarea);
+    }
+
+    /**
+     * config 필드에서 옵션 배열 추출
+     */
+    function getOptionsFromConfig(question) {
+        // 먼저 question.options가 있으면 사용 (로컬 폼 데이터)
+        if (question.options && question.options.length > 0) {
+            return question.options;
+        }
+
+        // config에서 options 추출 (서버 데이터)
+        if (question.config) {
+            try {
+                const config = typeof question.config === 'string'
+                    ? JSON.parse(question.config)
+                    : question.config;
+                return config.options || [];
+            } catch (e) {
+                console.warn('Failed to parse config for options:', e);
+            }
+        }
+        return [];
+    }
+
+    /**
+     * config 필드에서 스케일 설정 추출
+     */
+    function getScaleConfigFromQuestion(question) {
+        const defaultConfig = { min: 1, max: 5, minLabel: '', maxLabel: '' };
+
+        // 먼저 question.scaleConfig가 있으면 사용 (로컬 폼 데이터)
+        if (question.scaleConfig) {
+            try {
+                const config = typeof question.scaleConfig === 'string'
+                    ? JSON.parse(question.scaleConfig)
+                    : question.scaleConfig;
+                return { ...defaultConfig, ...config };
+            } catch (e) {
+                console.warn('Failed to parse scaleConfig:', e);
+            }
+        }
+
+        // config에서 스케일 설정 추출 (서버 데이터)
+        if (question.config) {
+            try {
+                const config = typeof question.config === 'string'
+                    ? JSON.parse(question.config)
+                    : question.config;
+                if (config.min !== undefined || config.max !== undefined) {
+                    return { ...defaultConfig, ...config };
+                }
+            } catch (e) {
+                console.warn('Failed to parse config for scale:', e);
+            }
+        }
+
+        return defaultConfig;
+    }
+
+    function createRadioOptions(question, container) {
+        const options = getOptionsFromConfig(question);
+        const optionsDiv = document.createElement('div');
+        optionsDiv.className = 'respond-options';
+
+        options.forEach((option) => {
+            const label = document.createElement('label');
+            label.className = 'respond-option-item';
+
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = `q_${question.id}`;
+            input.value = option.id;
+            input.className = 'respond-option-input';
+            input.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    responses[question.id] = e.target.value;
+                    updateProgress();
+                    clearQuestionError(question.id);
+                }
+            });
+
+            const optionLabel = document.createElement('span');
+            optionLabel.className = 'respond-option-label';
+            optionLabel.textContent = option.label || option.text;
+
+            label.appendChild(input);
+            label.appendChild(optionLabel);
+            optionsDiv.appendChild(label);
+        });
+
+        container.appendChild(optionsDiv);
+    }
+
+    function createCheckboxOptions(question, container) {
+        const options = getOptionsFromConfig(question);
+        const optionsDiv = document.createElement('div');
+        optionsDiv.className = 'respond-options';
+
+        options.forEach((option) => {
+            const label = document.createElement('label');
+            label.className = 'respond-option-item';
+
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.name = `q_${question.id}`;
+            input.value = option.id;
+            input.className = 'respond-option-input';
+            input.addEventListener('change', (e) => {
+                const checkboxes = document.querySelectorAll(`input[name="q_${question.id}"]:checked`);
+                responses[question.id] = Array.from(checkboxes).map(cb => cb.value);
+                updateProgress();
+                clearQuestionError(question.id);
+            });
+
+            const optionLabel = document.createElement('span');
+            optionLabel.className = 'respond-option-label';
+            optionLabel.textContent = option.label || option.text;
+
+            label.appendChild(input);
+            label.appendChild(optionLabel);
+            optionsDiv.appendChild(label);
+        });
+
+        container.appendChild(optionsDiv);
+    }
+
+    function createSelectInput(question, container) {
+        const select = document.createElement('select');
+        select.className = 'respond-select-input';
+        select.name = `q_${question.id}`;
+
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '선택해주세요';
+        select.appendChild(defaultOption);
+
+        const options = getOptionsFromConfig(question);
+        options.forEach((option) => {
+            const optionEl = document.createElement('option');
+            optionEl.value = option.id;
+            optionEl.textContent = option.label || option.text;
+            select.appendChild(optionEl);
+        });
+
+        select.addEventListener('change', (e) => {
+            responses[question.id] = e.target.value;
+            updateProgress();
+            clearQuestionError(question.id);
+        });
+
+        container.appendChild(select);
+    }
+
+    function createDateInput(questionId, container) {
+        const input = document.createElement('input');
+        input.type = 'date';
+        input.className = 'respond-date-input';
+        input.name = `q_${questionId}`;
+        input.addEventListener('change', (e) => {
+            responses[questionId] = e.target.value;
+            updateProgress();
+            clearQuestionError(questionId);
+        });
+        container.appendChild(input);
+    }
+
+    /**
+     * 파일 업로드 입력 생성 (file-upload 타입 질문에만 표시)
+     */
+    function createFileUploadInput(question, container) {
+        const questionId = question.id;
+
+        // config에서 파일 설정 추출
+        let fileConfig = {
+            allowedExtensions: [],
+            maxFileSize: 10485760, // 10MB 기본값
+            allowMultiple: false
+        };
+
+        if (question.config) {
+            try {
+                const config = typeof question.config === 'string'
+                    ? JSON.parse(question.config)
+                    : question.config;
+                fileConfig = {
+                    allowedExtensions: config.allowedExtensions || [],
+                    maxFileSize: config.maxFileSize || 10485760,
+                    allowMultiple: config.allowMultiple || false
+                };
+            } catch (e) {
+                console.warn('Failed to parse file config:', e);
+            }
+        }
+
+        // 파일 입력 생성
+        const inputWrapper = document.createElement('div');
+        inputWrapper.className = 'respond-file-upload-wrapper';
+
+        // input type="file" - file-upload 타입만 렌더링
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.className = 'respond-file-input';
+        input.name = `q_${questionId}`;
+        input.setAttribute('data-question-id', questionId);
+
+        if (fileConfig.allowMultiple) {
+            input.multiple = true;
+        }
+
+        if (fileConfig.allowedExtensions && fileConfig.allowedExtensions.length > 0) {
+            input.accept = fileConfig.allowedExtensions.join(',');
+        }
+
+        // 파일 선택 라벨 (스타일된 버튼처럼 표시)
+        const label = document.createElement('label');
+        label.className = 'respond-file-input-label';
+        label.htmlFor = `file-input-${questionId}`;
+        label.textContent = '파일 선택'; // innerHTML 대신 textContent 사용 (XSS 방지)
+        input.id = `file-input-${questionId}`;
+
+        // 선택된 파일 표시 영역
+        const fileList = document.createElement('div');
+        fileList.className = 'respond-file-list';
+        fileList.id = `file-list-${questionId}`;
+
+        input.addEventListener('change', (e) => {
+            const files = e.target.files;
+
+            // 선택된 파일 목록 표시
+            fileList.innerHTML = '';
+            const fileArray = Array.from(files);
+
+            if (fileArray.length > 0) {
+                const ul = document.createElement('ul');
+                fileArray.forEach((file) => {
+                    const li = document.createElement('li');
+                    li.className = 'respond-file-item';
+
+                    const fileName = document.createElement('span');
+                    fileName.className = 'respond-file-name';
+                    fileName.textContent = file.name; // textContent 사용 (XSS 방지)
+                    li.appendChild(fileName);
+
+                    const fileSize = document.createElement('span');
+                    fileSize.className = 'respond-file-size';
+                    fileSize.textContent = formatFileSize(file.size);
+                    li.appendChild(fileSize);
+
+                    ul.appendChild(li);
+                });
+                fileList.appendChild(ul);
+            }
+
+            // 파일 메타데이터 저장 (나중에 업로드용)
+            responses[questionId] = {
+                files: fileArray,
+                fileElements: files
+            };
+
+            updateProgress();
+            clearQuestionError(questionId);
+        });
+
+        inputWrapper.appendChild(label);
+        inputWrapper.appendChild(input);
+        inputWrapper.appendChild(fileList);
+        container.appendChild(inputWrapper);
+    }
+
+    function createLinearScale(question, container) {
+        // 헬퍼 함수로 scaleConfig 파싱
+        const scaleConfig = getScaleConfigFromQuestion(question);
+
+        const min = scaleConfig.min || 1;
+        const max = scaleConfig.max || 5;
+        const minLabelText = scaleConfig.minLabel || '';
+        const maxLabelText = scaleConfig.maxLabel || '';
+
+        const optionsDiv = document.createElement('div');
+        optionsDiv.className = 'respond-scale-options';
+
+        // 레이블 (min/max 값이 있을 때만 표시)
+        if (minLabelText || maxLabelText) {
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'respond-scale-label';
+
+            const minLabel = document.createElement('span');
+            minLabel.className = 'respond-scale-min';
+            minLabel.textContent = minLabelText;
+
+            const maxLabel = document.createElement('span');
+            maxLabel.className = 'respond-scale-max';
+            maxLabel.textContent = maxLabelText;
+
+            labelDiv.appendChild(minLabel);
+            labelDiv.appendChild(maxLabel);
+            optionsDiv.appendChild(labelDiv);
+        }
+
+        // 버튼 (min부터 max까지 동적 렌더링)
+        for (let i = min; i <= max; i++) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'respond-scale-button';
+            button.textContent = String(i);
+            button.value = String(i);
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                // 이전 선택 제거
+                optionsDiv.querySelectorAll('.respond-scale-button').forEach(btn => {
+                    btn.classList.remove('selected');
+                });
+                // 현재 버튼 선택
+                button.classList.add('selected');
+                responses[question.id] = String(i);
+                updateProgress();
+                clearQuestionError(question.id);
+            });
+            optionsDiv.appendChild(button);
+        }
+
+        container.appendChild(optionsDiv);
+    }
+
+    // ========================================================
+    // EVENT LISTENERS
+    // ========================================================
+    function setupEventListeners() {
+        elements.submitBtn.addEventListener('click', handleSubmit);
+        elements.errorCloseBtn.addEventListener('click', hideError);
+    }
+
+    async function handleSubmit(e) {
+        e.preventDefault();
+
+        clearAllErrors();
+
+        // 응답 수집 및 검증
+        const validation = validateResponses();
+        if (!validation.valid) {
+            displayValidationErrors(validation.errors);
+            return;
+        }
+
+        // 파일 크기 검증
+        const fileSizeErrors = validateFileSizes();
+        if (fileSizeErrors.length > 0) {
+            displayValidationErrors(fileSizeErrors);
+            return;
+        }
+
+        // 제출
+        try {
+            elements.submitBtn.disabled = true;
+            elements.submitBtnText.textContent = '제출 중...';
+
+            const formId = getFormIdFromUrl();
+
+            // 파일 업로드 처리
+            await uploadFiles(formId);
+
+            // 응답 생성 (파일 메타데이터 포함)
+            const answers = Object.entries(responses).map(([questionId, value]) => ({
+                questionId,
+                value: typeof value === 'object' && value.files
+                    ? value.uploadedMetadata || []
+                    : value
+            }));
+
+            // 이메일이 설정되어 있으면 추가
+            const submitData = {
+                answers
+            };
+
+            if (formData.settings && formData.settings.collectEmail && respondentEmail) {
+                submitData.respondentEmail = respondentEmail;
+            }
+
+            await submitResponses(formId, submitData);
+
+            // 성공 화면 표시
+            showSuccessScreen();
+        } catch (error) {
+            console.error('Error submitting responses:', error);
+            showError('제출에 실패했습니다. 다시 시도해주세요.');
+            elements.submitBtn.disabled = false;
+            elements.submitBtnText.textContent = '제출';
+        }
+    }
+
+    /**
+     * 파일 업로드 (임시 업로드)
+     */
+    async function uploadFiles(formId) {
+        const questions = formData.questions || [];
+
+        for (const question of questions) {
+            if (question.type !== 'file-upload') continue;
+
+            const value = responses[question.id];
+            if (!value || !value.files || value.files.length === 0) continue;
+
+            const uploadedMetadata = [];
+
+            for (const file of value.files) {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('formId', formId);
+                formData.append('questionId', question.id);
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/files/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const fileMetadata = await response.json();
+                    uploadedMetadata.push(fileMetadata);
+                } catch (error) {
+                    console.error('File upload error:', error);
+                    throw new Error(`파일 업로드에 실패했습니다`);
+                }
+            }
+
+            // 업로드된 파일 메타데이터 저장
+            responses[question.id].uploadedMetadata = uploadedMetadata;
+        }
+    }
+
+    // ========================================================
+    // VALIDATION
+    // ========================================================
+    function validateResponses() {
+        const errors = [];
+        const questions = formData.questions || [];
+        const settings = formData.settings || {};
+
+        // 이메일 필드 검증
+        if (settings.collectEmail && !respondentEmail.trim()) {
+            elements.emailFieldContainer.classList.add('has-error');
+            const errorEl = elements.emailFieldContainer.querySelector('.respond-error-message');
+            if (!errorEl) {
+                const emailError = document.createElement('div');
+                emailError.className = 'respond-error-message';
+                emailError.textContent = '이메일은 필수입니다.';
+                elements.emailFieldContainer.appendChild(emailError);
+            }
+            return {
+                valid: false,
+                errors: [{ field: 'email', message: '이메일은 필수입니다.' }]
+            };
+        }
+
+        // 이메일 형식 검증
+        if (settings.collectEmail && respondentEmail.trim()) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(respondentEmail)) {
+                elements.emailFieldContainer.classList.add('has-error');
+                const errorEl = elements.emailFieldContainer.querySelector('.respond-error-message');
+                if (!errorEl) {
+                    const emailError = document.createElement('div');
+                    emailError.className = 'respond-error-message';
+                    emailError.textContent = '유효한 이메일 주소를 입력하세요.';
+                    elements.emailFieldContainer.appendChild(emailError);
+                }
+                return {
+                    valid: false,
+                    errors: [{ field: 'email', message: '유효한 이메일 주소를 입력하세요.' }]
+                };
+            }
+        }
+
+        // 질문 검증
+        questions.forEach((question) => {
+            if (!question.required) return;
+
+            const value = responses[question.id];
+            let isEmpty = false;
+
+            if (Array.isArray(value)) {
+                isEmpty = value.length === 0;
+            } else if (value && typeof value === 'object' && value.files) {
+                // 파일 업로드 질문
+                isEmpty = !value.files || value.files.length === 0;
+            } else if (typeof value === 'string') {
+                isEmpty = value.trim() === '';
+            } else {
+                isEmpty = !value;
+            }
+
+            if (isEmpty) {
+                errors.push({
+                    questionId: question.id,
+                    message: '이 질문은 필수입니다.'
+                });
+            }
+        });
+
+        return {
+            valid: errors.length === 0,
+            errors
+        };
+    }
+
+    /**
+     * 파일 크기 검증 (모든 파일)
+     */
+    function validateFileSizes() {
+        const questions = formData.questions || [];
+        const errors = [];
+
+        questions.forEach((question) => {
+            if (question.type !== 'file-upload') return;
+
+            const value = responses[question.id];
+            if (!value || !value.files) return;
+
+            let fileConfig = { maxFileSize: 10485760 };
+            if (question.config) {
+                try {
+                    const config = typeof question.config === 'string'
+                        ? JSON.parse(question.config)
+                        : question.config;
+                    fileConfig = { maxFileSize: config.maxFileSize || 10485760 };
+                } catch (e) {
+                    console.warn('Failed to parse config for file size:', e);
+                }
+            }
+
+            value.files.forEach((file) => {
+                if (file.size > fileConfig.maxFileSize) {
+                    const maxSizeMB = Math.round(fileConfig.maxFileSize / (1024 * 1024));
+                    errors.push({
+                        questionId: question.id,
+                        message: `파일 크기가 너무 큽니다 (최대: ${maxSizeMB} MB)`
+                    });
+                }
+            });
+        });
+
+        return errors;
+    }
+
+    function displayValidationErrors(errors) {
+        errors.forEach((error) => {
+            const card = document.querySelector(`[data-question-id="${error.questionId}"]`);
+            if (card) {
+                card.classList.add('has-error');
+                const content = card.querySelector('.respond-question-content');
+                if (content) {
+                    // 기존 에러 메시지 제거
+                    const existingError = content.querySelector('.respond-error-message');
+                    if (existingError) {
+                        existingError.remove();
+                    }
+
+                    // 새 에러 메시지 추가
+                    const errorMsg = document.createElement('div');
+                    errorMsg.className = 'respond-error-message';
+                    errorMsg.textContent = error.message;
+                    content.appendChild(errorMsg);
+                }
+            }
+        });
+    }
+
+    function clearAllErrors() {
+        // 이메일 필드 에러 초기화
+        if (elements.emailFieldContainer) {
+            elements.emailFieldContainer.classList.remove('has-error');
+            const errorMsg = elements.emailFieldContainer.querySelector('.respond-error-message');
+            if (errorMsg) {
+                errorMsg.remove();
+            }
+        }
+
+        // 질문 카드 에러 초기화
+        elements.questionsContainer.querySelectorAll('.respond-question-card').forEach((card) => {
+            card.classList.remove('has-error');
+            const errorMsg = card.querySelector('.respond-error-message');
+            if (errorMsg) {
+                errorMsg.remove();
+            }
+        });
+    }
+
+    function clearQuestionError(questionId) {
+        const card = document.querySelector(`[data-question-id="${questionId}"]`);
+        if (card) {
+            card.classList.remove('has-error');
+            const errorMsg = card.querySelector('.respond-error-message');
+            if (errorMsg) {
+                errorMsg.remove();
+            }
+        }
+    }
+
+    // ========================================================
+    // SUBMISSION
+    // ========================================================
+    async function submitResponses(formId, submitData) {
+        const response = await fetch(`${API_BASE_URL}/forms/${formId}/responses`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(submitData)
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.message || 'Submit failed');
+        }
+
+        return await response.json();
+    }
+
+    // ========================================================
+    // UI UPDATES
+    // ========================================================
+    function updateProgress() {
+        const questions = formData.questions || [];
+        const settings = formData.settings || {};
+        const requiredQuestions = questions.filter(q => q.required);
+
+        // 필수 항목 개수 계산 (이메일 필드 포함)
+        let totalRequired = requiredQuestions.length;
+        if (settings.collectEmail) {
+            totalRequired += 1;
+        }
+
+        if (totalRequired === 0) {
+            elements.progressFill.style.width = '100%';
+            return;
+        }
+
+        // 답변된 항목 개수 계산
+        let answered = 0;
+
+        // 이메일 필드 확인
+        if (settings.collectEmail && respondentEmail.trim()) {
+            answered += 1;
+        }
+
+        // 질문 답변 확인
+        answered += requiredQuestions.filter(q => {
+            const value = responses[q.id];
+            if (Array.isArray(value)) {
+                return value.length > 0;
+            } else if (value && typeof value === 'object' && value.files) {
+                // 파일 업로드 질문
+                return value.files.length > 0;
+            }
+            return value && String(value).trim() !== '';
+        }).length;
+
+        const percentage = (answered / totalRequired) * 100;
+        elements.progressFill.style.width = `${percentage}%`;
+    }
+
+    function showSuccessScreen() {
+        elements.formContainer.style.display = 'none';
+        elements.successScreen.style.display = 'block';
+    }
+
+    function showLoading(show) {
+        elements.loadingIndicator.style.display = show ? 'flex' : 'none';
+    }
+
+    function showError(message) {
+        elements.errorMessage.textContent = message;
+        elements.errorBanner.style.display = 'block';
+
+        // 5초 후 자동 숨김
+        setTimeout(() => {
+            hideError();
+        }, 5000);
+    }
+
+    function hideError() {
+        elements.errorBanner.style.display = 'none';
+    }
+
+    // ========================================================
+    // UTILITY FUNCTIONS
+    // ========================================================
+    function escapeHtml(text) {
+        if (!text) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    // ========================================================
+    // INITIALIZE ON LOAD
+    // ========================================================
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+})();
