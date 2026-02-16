@@ -1,3 +1,38 @@
+# Claude/AI
 /.claude
 /SUMMARY.txt
 /prompts
+
+# Build outputs
+backend/.gradle/
+backend/build/
+backend/uploads/
+
+# IDE settings
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Node modules
+node_modules/
+
+# Documentation (auto-generated)
+REVIEW_REPORT.md
+RESPONDER_REVIEW.md
+RESPONDER_IMPROVEMENTS.md
+RESPONDER_FINAL_REPORT.md
+survey-core/README.md
+
+# Output folder (duplicate/old)
+ouput/
