@@ -612,12 +612,15 @@
             header.innerHTML = `
                 <span class="survey-question-number">${index + 1}.</span>
                 <div class="survey-question-content">
-                    <input type="text"
-                           class="survey-question-input"
-                           placeholder="질문 입력"
-                           value="${escapeHtml(question.title)}"
-                           data-field="title"
-                           ${config.readOnly ? 'readonly' : ''}>
+                    <div class="survey-question-title-wrapper">
+                        <input type="text"
+                               class="survey-question-input"
+                               placeholder="질문 입력"
+                               value="${escapeHtml(question.title)}"
+                               data-field="title"
+                               ${config.readOnly ? 'readonly' : ''}>
+                        ${question.required ? '<span class="survey-required-asterisk">*</span>' : ''}
+                    </div>
                     <input type="text"
                            class="survey-description-field"
                            placeholder="설명 (선택사항)"
@@ -783,7 +786,7 @@
             container.innerHTML = `
                 <div class="survey-scale-range">
                     <select class="survey-scale-select" data-field="min" ${config.readOnly ? 'disabled' : ''}>
-                        ${[0, 1].map(v => `<option value="${v}" ${config.min === v ? 'selected' : ''}>${v}</option>`).join('')}
+                        ${[0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${config.min === v ? 'selected' : ''}>${v}</option>`).join('')}
                     </select>
                     <span>부터</span>
                     <select class="survey-scale-select" data-field="max" ${config.readOnly ? 'disabled' : ''}>
@@ -1038,15 +1041,25 @@
             const oldType = question.type;
             question.type = newType;
 
-            // Add options if changing to option-based type
-            if (OPTION_BASED_TYPES.includes(newType) && !OPTION_BASED_TYPES.includes(oldType)) {
-                question.config = question.config || {};
-                question.config.options = [createDefaultOption(0)];
+            // Handle option-based types
+            if (OPTION_BASED_TYPES.includes(newType)) {
+                if (!OPTION_BASED_TYPES.includes(oldType)) {
+                    // Changing FROM non-option type TO option type: create new options
+                    question.config = question.config || {};
+                    question.config.options = [createDefaultOption(0)];
+                }
+                // If changing between option types, preserve existing options
             }
 
             // Add scale config if changing to linear scale
             if (newType === 'linear-scale') {
-                question.config = { min: 1, max: 5, minLabel: '', maxLabel: '' };
+                question.config = {
+                    ...question.config,  // Preserve existing config if any
+                    min: 1,
+                    max: 5,
+                    minLabel: question.config?.minLabel || '',
+                    maxLabel: question.config?.maxLabel || ''
+                };
             }
 
             notifyChange();
