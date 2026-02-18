@@ -45,6 +45,7 @@
      * 모든 섹션의 질문을 병합하여 반환
      * 섹션이 있으면 섹션의 질문들을 모두 추출
      * 섹션이 없으면 form.questions 사용
+     * order ASC 기준으로 정렬
      */
     function getAllQuestions(form) {
         let allQuestions = [];
@@ -62,6 +63,9 @@
         if (allQuestions.length === 0 && form.questions) {
             allQuestions = form.questions;
         }
+
+        // order 기준으로 정렬
+        allQuestions.sort((a, b) => (a.order || a.orderIndex || 0) - (b.order || b.orderIndex || 0));
 
         return allQuestions;
     }
@@ -172,7 +176,12 @@
         elements.questionsContainer.innerHTML = '';
 
         const questionList = questions || formData.questions || [];
-        const sortedQuestions = [...questionList].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+        // order 또는 orderIndex 필드 기준으로 정렬 (order 우선)
+        const sortedQuestions = [...questionList].sort((a, b) => {
+            const aOrder = a.order !== undefined ? a.order : (a.orderIndex || 0);
+            const bOrder = b.order !== undefined ? b.order : (b.orderIndex || 0);
+            return aOrder - bOrder;
+        });
 
         sortedQuestions.forEach((question, index) => {
             const questionCard = createQuestionCard(question, index);
@@ -268,9 +277,13 @@
             sectionHeaderContainer.appendChild(sectionDesc);
         }
 
-        // 섹션의 질문들을 정렬
+        // 섹션의 질문들을 정렬 (order 또는 orderIndex 기준)
         const sectionQuestions = section.questions || [];
-        sectionQuestions.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+        sectionQuestions.sort((a, b) => {
+            const aOrder = a.order !== undefined ? a.order : (a.orderIndex || 0);
+            const bOrder = b.order !== undefined ? b.order : (b.orderIndex || 0);
+            return aOrder - bOrder;
+        });
 
         // 질문 렌더링
         elements.questionsContainer.innerHTML = '';
@@ -376,8 +389,8 @@
 
         card.appendChild(header);
 
-        // 질문 첨부파일 표시
-        if (question.attachmentStoredName) {
+        // 질문 첨부파일 표시 (attachment 필드 확인)
+        if (question.attachment || question.attachmentStoredName) {
             const attachmentElement = createAttachmentElement(question);
             card.appendChild(attachmentElement);
         }
@@ -393,32 +406,39 @@
 
     /**
      * Create attachment display element (image or file download link)
+     * 이미지 파일: <img> 태그로 표시
+     * 다른 파일: 다운로드 링크로 표시
      */
     function createAttachmentElement(question) {
         const attachmentContainer = document.createElement('div');
         attachmentContainer.className = 'respond-question-attachment';
 
-        const fileExtension = getFileExtension(question.attachmentStoredName);
+        // attachment 또는 attachmentStoredName 중 하나 확인
+        const attachmentName = question.attachment || question.attachmentStoredName;
+        if (!attachmentName) {
+            return attachmentContainer;
+        }
+
+        const formId = getFormIdFromUrl();
+        const fileUrl = `/api/forms/${formId}/questions/${question.id}/attachment`;
+        const fileExtension = getFileExtension(attachmentName);
         const isImage = isImageFile(fileExtension);
 
-        // Get formId from URL
-        const formId = getFormIdFromUrl();
-
         if (isImage) {
-            // Display image
+            // 이미지 파일: <img> 태그로 표시
             const img = document.createElement('img');
             img.className = 'respond-attachment-image';
-            img.src = `/api/forms/${formId}/questions/${question.id}/attachment`;
+            img.src = fileUrl;
             img.alt = question.title || 'Attachment image';
             img.onerror = () => {
-                // Fallback to download link if image fails to load
+                // 이미지 로드 실패 시 다운로드 링크로 폴백
                 attachmentContainer.innerHTML = '';
-                createDownloadLink(attachmentContainer, question, formId);
+                createDownloadLink(attachmentContainer, question, fileUrl, attachmentName);
             };
             attachmentContainer.appendChild(img);
         } else {
-            // Display download link for non-image files
-            createDownloadLink(attachmentContainer, question, formId);
+            // 다른 파일: 다운로드 링크로 표시
+            createDownloadLink(attachmentContainer, question, fileUrl, attachmentName);
         }
 
         return attachmentContainer;
@@ -427,14 +447,14 @@
     /**
      * Create download link for file attachments
      */
-    function createDownloadLink(container, question, formId) {
+    function createDownloadLink(container, question, fileUrl, filename) {
         const linkWrapper = document.createElement('div');
         linkWrapper.className = 'respond-attachment-download';
 
         const link = document.createElement('a');
         link.className = 'respond-attachment-link';
-        link.href = `/api/forms/${formId}/questions/${question.id}/attachment`;
-        link.download = question.attachmentFilename || question.attachmentStoredName;
+        link.href = fileUrl;
+        link.download = filename;
         link.target = '_blank';
 
         const icon = document.createElement('span');
@@ -443,7 +463,7 @@
 
         const text = document.createElement('span');
         text.className = 'respond-attachment-filename';
-        text.textContent = question.attachmentFilename || question.attachmentStoredName;
+        text.textContent = filename;
 
         link.appendChild(icon);
         link.appendChild(text);
@@ -543,7 +563,11 @@
                 const config = typeof question.config === 'string'
                     ? JSON.parse(question.config)
                     : question.config;
-                return config.options || [];
+
+                // config가 null이거나 options가 없는 경우 처리
+                if (config && config.options) {
+                    return config.options;
+                }
             } catch (e) {
                 console.warn('Failed to parse config for options:', e);
             }
@@ -797,11 +821,12 @@
     }
 
     function createLinearScale(question, container) {
-        // 헬퍼 함수로 scaleConfig 파싱
-        const scaleConfig = getScaleConfigFromQuestion(question);
+        // 선형배율은 항상 1~10 고정
+        const min = 1;
+        const max = 10;
 
-        const min = scaleConfig.min || 1;
-        const max = scaleConfig.max || 5;
+        // scaleConfig에서 레이블 추출
+        const scaleConfig = getScaleConfigFromQuestion(question);
         const minLabelText = scaleConfig.minLabel || '';
         const maxLabelText = scaleConfig.maxLabel || '';
 
@@ -826,7 +851,7 @@
             optionsDiv.appendChild(labelDiv);
         }
 
-        // 버튼 (min부터 max까지 동적 렌더링)
+        // 버튼 (1부터 10까지 고정 렌더링)
         for (let i = min; i <= max; i++) {
             const button = document.createElement('button');
             button.type = 'button';
