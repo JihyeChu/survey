@@ -1,5 +1,7 @@
 package com.forms.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.forms.dto.ResponseDto;
 import com.forms.dto.ResponseRequest;
 import com.forms.entity.Form;
@@ -87,10 +89,13 @@ class ResponseServiceTest {
 
     @Test
     @DisplayName("응답 제출 - 답변 포함")
-    void submitResponse_WithAnswers() {
+    void submitResponse_WithAnswers() throws Exception {
         ResponseRequest.AnswerRequest answerRequest = new ResponseRequest.AnswerRequest();
         answerRequest.setQuestionId(1L);
-        answerRequest.setValue("홍길동");
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode valueNode = objectMapper.valueToTree("홍길동");
+        answerRequest.setValue(valueNode);
         responseRequest.setAnswers(Arrays.asList(answerRequest));
 
         given(formRepository.findById(1L)).willReturn(Optional.of(form));
@@ -105,7 +110,7 @@ class ResponseServiceTest {
     @Test
     @DisplayName("ID로 응답 조회 성공")
     void getResponseById_Success() {
-        given(responseRepository.findById(1L)).willReturn(Optional.of(response));
+        given(responseRepository.findByIdWithAnswers(1L)).willReturn(response);
 
         ResponseDto result = responseService.getResponseById(1L);
 
@@ -116,7 +121,7 @@ class ResponseServiceTest {
     @Test
     @DisplayName("존재하지 않는 응답 조회시 예외 발생")
     void getResponseById_NotFound() {
-        given(responseRepository.findById(999L)).willReturn(Optional.empty());
+        given(responseRepository.findByIdWithAnswers(999L)).willReturn(null);
 
         assertThatThrownBy(() -> responseService.getResponseById(999L))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -134,7 +139,7 @@ class ResponseServiceTest {
                 .build();
 
         given(formRepository.findById(1L)).willReturn(Optional.of(form));
-        given(responseRepository.findByForm(form)).willReturn(Arrays.asList(response, response2));
+        given(responseRepository.findByFormWithAnswers(form)).willReturn(Arrays.asList(response, response2));
 
         List<ResponseDto> result = responseService.getResponsesByFormId(1L);
 

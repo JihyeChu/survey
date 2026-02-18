@@ -5,7 +5,6 @@ import com.forms.dto.FormResponse;
 import com.forms.entity.Form;
 import com.forms.repository.FormRepository;
 import com.forms.repository.QuestionRepository;
-import com.forms.repository.OptionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,9 +34,6 @@ class FormServiceTest {
     @Mock
     private QuestionRepository questionRepository;
 
-    @Mock
-    private OptionRepository optionRepository;
-
     @InjectMocks
     private FormService formService;
 
@@ -63,6 +59,8 @@ class FormServiceTest {
     @DisplayName("폼 생성 성공")
     void createForm_Success() {
         given(formRepository.save(any(Form.class))).willReturn(form);
+        given(formRepository.findById(1L)).willReturn(Optional.of(form));
+        given(questionRepository.findByFormIdAndSectionIsNullOrderByOrderIndex(1L)).willReturn(Collections.emptyList());
 
         FormResponse result = formService.createForm(formRequest);
 
@@ -76,7 +74,7 @@ class FormServiceTest {
     @DisplayName("ID로 폼 조회 성공")
     void getFormById_Success() {
         given(formRepository.findById(1L)).willReturn(Optional.of(form));
-        given(questionRepository.findByFormIdOrderByOrderIndex(1L)).willReturn(Collections.emptyList());
+        given(questionRepository.findByFormIdAndSectionIsNullOrderByOrderIndex(1L)).willReturn(Collections.emptyList());
 
         FormResponse result = formService.getFormById(1L);
 
@@ -120,13 +118,17 @@ class FormServiceTest {
         updateRequest.setTitle("수정된 제목");
         updateRequest.setDescription("수정된 설명");
 
+        Form updatedForm = Form.builder()
+                .id(1L)
+                .title("수정된 제목")
+                .description("수정된 설명")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
         given(formRepository.findById(1L)).willReturn(Optional.of(form));
-        given(formRepository.save(any(Form.class))).willAnswer(invocation -> {
-            Form f = invocation.getArgument(0);
-            f.setTitle(updateRequest.getTitle());
-            f.setDescription(updateRequest.getDescription());
-            return f;
-        });
+        given(formRepository.save(any(Form.class))).willReturn(updatedForm);
+        given(questionRepository.findByFormIdAndSectionIsNullOrderByOrderIndex(1L)).willReturn(Collections.emptyList());
 
         FormResponse result = formService.updateForm(1L, updateRequest);
 

@@ -56,7 +56,6 @@ class QuestionServiceTest {
                 .title("이름을 입력하세요")
                 .required(true)
                 .orderIndex(0)
-                .options(new ArrayList<>())
                 .build();
 
         questionRequest = new QuestionRequest();
@@ -148,7 +147,7 @@ class QuestionServiceTest {
     @Test
     @DisplayName("질문 삭제 성공")
     void deleteQuestion_Success() {
-        given(questionRepository.existsById(1L)).willReturn(true);
+        given(questionRepository.findById(1L)).willReturn(Optional.of(question));
 
         questionService.deleteQuestion(1L);
 
@@ -158,7 +157,7 @@ class QuestionServiceTest {
     @Test
     @DisplayName("존재하지 않는 질문 삭제시 예외 발생")
     void deleteQuestion_NotFound() {
-        given(questionRepository.existsById(999L)).willReturn(false);
+        given(questionRepository.findById(999L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> questionService.deleteQuestion(999L))
                 .isInstanceOf(IllegalArgumentException.class)
