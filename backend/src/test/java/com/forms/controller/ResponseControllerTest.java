@@ -1,5 +1,6 @@
 package com.forms.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.forms.dto.ResponseDto;
 import com.forms.dto.ResponseRequest;
@@ -72,7 +73,10 @@ class ResponseControllerTest {
     void submitResponse_WithAnswers() throws Exception {
         ResponseRequest.AnswerRequest answerRequest = new ResponseRequest.AnswerRequest();
         answerRequest.setQuestionId(1L);
-        answerRequest.setValue("홍길동");
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode valueNode = objectMapper.valueToTree("홍길동");
+        answerRequest.setValue(valueNode);
         responseRequest.setAnswers(Arrays.asList(answerRequest));
 
         ResponseDto.AnswerDto answerDto = ResponseDto.AnswerDto.builder()

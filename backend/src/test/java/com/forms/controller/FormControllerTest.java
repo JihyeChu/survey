@@ -164,7 +164,6 @@ class FormControllerTest {
                 .title("이름")
                 .required(true)
                 .orderIndex(0)
-                .options(Collections.emptyList())
                 .build();
 
         given(questionService.createQuestion(eq(1L), any(QuestionRequest.class))).willReturn(questionResponse);
@@ -187,7 +186,6 @@ class FormControllerTest {
                 .title("이름")
                 .required(true)
                 .orderIndex(0)
-                .options(Collections.emptyList())
                 .build();
 
         given(questionService.getQuestionById(1L)).willReturn(questionResponse);
@@ -213,7 +211,6 @@ class FormControllerTest {
                 .title("수정된 질문")
                 .required(false)
                 .orderIndex(0)
-                .options(Collections.emptyList())
                 .build();
 
         given(questionService.updateQuestion(eq(1L), any(QuestionRequest.class))).willReturn(updatedResponse);
