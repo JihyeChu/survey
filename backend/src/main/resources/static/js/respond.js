@@ -36,6 +36,35 @@
     let formData = null;
     let responses = {};  // questionId -> value
     let respondentEmail = '';  // 응답자 이메일
+    let currentSectionIndex = 0;  // 현재 섹션 인덱스
+
+    // ========================================================
+    // HELPER FUNCTIONS
+    // ========================================================
+    /**
+     * 모든 섹션의 질문을 병합하여 반환
+     * 섹션이 있으면 섹션의 질문들을 모두 추출
+     * 섹션이 없으면 form.questions 사용
+     */
+    function getAllQuestions(form) {
+        let allQuestions = [];
+
+        // 섹션이 있는 경우: 모든 섹션의 질문 병합
+        if (form.sections && form.sections.length > 0) {
+            form.sections.forEach(section => {
+                if (section.questions && section.questions.length > 0) {
+                    allQuestions = allQuestions.concat(section.questions);
+                }
+            });
+        }
+
+        // 섹션 없는 기존 폼: form.questions 사용
+        if (allQuestions.length === 0 && form.questions) {
+            allQuestions = form.questions;
+        }
+
+        return allQuestions;
+    }
 
     // ========================================================
     // INITIALIZATION
@@ -104,8 +133,14 @@
         // 이메일 필드 렌더링
         renderEmailField();
 
-        // 질문 렌더링
-        renderQuestions();
+        // 섹션이 있는 경우 섹션별 렌더링, 없으면 기존 방식
+        const hasSections = formData.sections && formData.sections.length > 0;
+        if (hasSections) {
+            renderSectionNavigation();
+            renderCurrentSection();
+        } else {
+            renderQuestions();
+        }
 
         // 초기 진행률 업데이트
         updateProgress();
@@ -133,19 +168,180 @@
         }
     }
 
-    function renderQuestions() {
+    function renderQuestions(questions = null) {
         elements.questionsContainer.innerHTML = '';
 
-        const questions = formData.questions || [];
-        questions.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+        const questionList = questions || formData.questions || [];
+        const sortedQuestions = [...questionList].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 
-        questions.forEach((question, index) => {
+        sortedQuestions.forEach((question, index) => {
             const questionCard = createQuestionCard(question, index);
             elements.questionsContainer.appendChild(questionCard);
         });
 
         // 제출 버튼 활성화
         elements.submitBtn.disabled = false;
+    }
+
+    // ========================================================
+    // SECTION NAVIGATION
+    // ========================================================
+    function renderSectionNavigation() {
+        const hasSections = formData.sections && formData.sections.length > 0;
+        if (!hasSections) return;
+
+        // 기존 네비게이션 제거
+        const existingNav = elements.questionsContainer.parentElement.querySelector('.respond-section-nav');
+        if (existingNav) {
+            existingNav.remove();
+        }
+
+        // 진행률 표시 및 네비게이션 컨테이너
+        const navContainer = document.createElement('div');
+        navContainer.className = 'respond-section-nav';
+
+        // 진행률 표시
+        const progressDiv = document.createElement('div');
+        progressDiv.className = 'respond-section-progress';
+        progressDiv.textContent = `섹션 ${currentSectionIndex + 1} / ${formData.sections.length}`;
+
+        // 버튼 컨테이너
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'respond-section-nav-buttons';
+
+        // 이전 버튼
+        const prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.className = 'respond-nav-btn respond-nav-btn-prev';
+        prevBtn.textContent = '이전';
+        prevBtn.disabled = currentSectionIndex === 0;
+        prevBtn.addEventListener('click', () => goToPreviousSection());
+
+        // 다음 또는 제출 버튼
+        const nextBtn = document.createElement('button');
+        nextBtn.type = 'button';
+        nextBtn.className = 'respond-nav-btn respond-nav-btn-next';
+        const isLastSection = currentSectionIndex === formData.sections.length - 1;
+        nextBtn.textContent = isLastSection ? '제출' : '다음';
+        nextBtn.addEventListener('click', () => {
+            if (isLastSection) {
+                handleSubmit({ preventDefault: () => {} });
+            } else {
+                goToNextSection();
+            }
+        });
+
+        buttonsDiv.appendChild(prevBtn);
+        buttonsDiv.appendChild(nextBtn);
+
+        navContainer.appendChild(progressDiv);
+        navContainer.appendChild(buttonsDiv);
+
+        elements.questionsContainer.parentElement.appendChild(navContainer);
+
+        // 기본 제출 버튼 숨김
+        elements.submitBtn.style.display = 'none';
+    }
+
+    function renderCurrentSection() {
+        const hasSections = formData.sections && formData.sections.length > 0;
+        if (!hasSections) return;
+
+        const section = formData.sections[currentSectionIndex];
+        if (!section) return;
+
+        // 섹션 헤더 렌더링
+        const sectionHeaderContainer = document.createElement('div');
+        sectionHeaderContainer.className = 'respond-section-header';
+
+        if (section.title) {
+            const sectionTitle = document.createElement('h2');
+            sectionTitle.className = 'respond-section-title';
+            sectionTitle.textContent = section.title;
+            sectionHeaderContainer.appendChild(sectionTitle);
+        }
+
+        if (section.description) {
+            const sectionDesc = document.createElement('p');
+            sectionDesc.className = 'respond-section-description';
+            sectionDesc.textContent = section.description;
+            sectionHeaderContainer.appendChild(sectionDesc);
+        }
+
+        // 섹션의 질문들을 정렬
+        const sectionQuestions = section.questions || [];
+        sectionQuestions.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+
+        // 질문 렌더링
+        elements.questionsContainer.innerHTML = '';
+        elements.questionsContainer.appendChild(sectionHeaderContainer);
+
+        sectionQuestions.forEach((question, index) => {
+            const questionCard = createQuestionCard(question, index);
+            elements.questionsContainer.appendChild(questionCard);
+        });
+    }
+
+    function goToNextSection() {
+        // 현재 섹션 검증
+        const section = formData.sections[currentSectionIndex];
+        const sectionQuestions = section.questions || [];
+
+        const validation = validateSection(sectionQuestions);
+        if (!validation.valid) {
+            displayValidationErrors(validation.errors);
+            return;
+        }
+
+        // 다음 섹션으로
+        if (currentSectionIndex < formData.sections.length - 1) {
+            currentSectionIndex++;
+            renderCurrentSection();
+            renderSectionNavigation();
+            window.scrollTo(0, 0);
+        }
+    }
+
+    function goToPreviousSection() {
+        if (currentSectionIndex > 0) {
+            currentSectionIndex--;
+            renderCurrentSection();
+            renderSectionNavigation();
+            window.scrollTo(0, 0);
+        }
+    }
+
+    function validateSection(sectionQuestions) {
+        const errors = [];
+
+        sectionQuestions.forEach((question) => {
+            if (!question.required) return;
+
+            const value = responses[question.id];
+            let isEmpty = false;
+
+            if (Array.isArray(value)) {
+                isEmpty = value.length === 0;
+            } else if (value && typeof value === 'object' && value.files) {
+                isEmpty = !value.files || value.files.length === 0;
+            } else if (typeof value === 'string') {
+                isEmpty = value.trim() === '';
+            } else {
+                isEmpty = !value;
+            }
+
+            if (isEmpty) {
+                errors.push({
+                    questionId: question.id,
+                    message: '이 질문은 필수입니다.'
+                });
+            }
+        });
+
+        return {
+            valid: errors.length === 0,
+            errors
+        };
     }
 
     function createQuestionCard(question, index) {
@@ -668,7 +864,15 @@
 
         clearAllErrors();
 
-        // 응답 수집 및 검증
+        // 섹션이 있는 경우: 현재 섹션 검증 또는 전체 폼 검증
+        const hasSections = formData.sections && formData.sections.length > 0;
+        if (hasSections && currentSectionIndex < formData.sections.length - 1) {
+            // 마지막 섹션이 아닌 경우 다음 섹션으로
+            goToNextSection();
+            return;
+        }
+
+        // 전체 폼 검증
         const validation = validateResponses();
         if (!validation.valid) {
             displayValidationErrors(validation.errors);
@@ -723,9 +927,10 @@
 
     /**
      * 파일 업로드 (임시 업로드)
+     * 모든 섹션의 질문 포함
      */
     async function uploadFiles(formId) {
-        const questions = formData.questions || [];
+        const questions = getAllQuestions(formData);
 
         for (const question of questions) {
             if (question.type !== 'file-upload') continue;
@@ -769,7 +974,7 @@
     // ========================================================
     function validateResponses() {
         const errors = [];
-        const questions = formData.questions || [];
+        const questions = getAllQuestions(formData);
         const settings = formData.settings || {};
 
         // 이메일 필드 검증
@@ -807,7 +1012,7 @@
             }
         }
 
-        // 질문 검증
+        // 질문 검증 (모든 섹션 포함)
         questions.forEach((question) => {
             if (!question.required) return;
 
@@ -840,10 +1045,10 @@
     }
 
     /**
-     * 파일 크기 검증 (모든 파일)
+     * 파일 크기 검증 (모든 파일, 모든 섹션 포함)
      */
     function validateFileSizes() {
-        const questions = formData.questions || [];
+        const questions = getAllQuestions(formData);
         const errors = [];
 
         questions.forEach((question) => {
@@ -956,7 +1161,7 @@
     // UI UPDATES
     // ========================================================
     function updateProgress() {
-        const questions = formData.questions || [];
+        const questions = getAllQuestions(formData);
         const settings = formData.settings || {};
         const requiredQuestions = questions.filter(q => q.required);
 
@@ -979,7 +1184,7 @@
             answered += 1;
         }
 
-        // 질문 답변 확인
+        // 질문 답변 확인 (모든 섹션 포함)
         answered += requiredQuestions.filter(q => {
             const value = responses[q.id];
             if (Array.isArray(value)) {
