@@ -7,7 +7,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Data
 @NoArgsConstructor
@@ -21,9 +23,22 @@ public class FormResponse {
     private String settings;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private List<SectionResponse> sections;
     private List<QuestionResponse> questions;
 
     public static FormResponse fromEntity(Form form) {
+        List<SectionResponse> sectionResponses = form.getSections() != null
+                ? form.getSections().stream()
+                    .map(SectionResponse::fromEntity)
+                    .collect(Collectors.toList())
+                : new ArrayList<>();
+
+        List<QuestionResponse> questionResponses = form.getQuestions() != null
+                ? form.getQuestions().stream()
+                    .map(QuestionResponse::fromEntity)
+                    .collect(Collectors.toList())
+                : new ArrayList<>();
+
         return FormResponse.builder()
                 .id(form.getId())
                 .title(form.getTitle())
@@ -31,6 +46,8 @@ public class FormResponse {
                 .settings(form.getSettings())
                 .createdAt(form.getCreatedAt())
                 .updatedAt(form.getUpdatedAt())
+                .sections(sectionResponses)
+                .questions(questionResponses)
                 .build();
     }
 

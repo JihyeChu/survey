@@ -17,6 +17,7 @@ public class FormRequest {
     private String title;
     private String description;
     private JsonNode settings;
+    private List<SectionRequest> sections;
     private List<QuestionRequest> questions;
 
 }
