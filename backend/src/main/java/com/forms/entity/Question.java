@@ -21,6 +21,10 @@ public class Question {
     @JoinColumn(name = "form_id", nullable = false)
     private Form form;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "section_id", nullable = true)
+    private Section section;
+
     @Column(nullable = false)
     private String type;
 

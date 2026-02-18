@@ -14,6 +14,7 @@ public class QuestionResponse {
 
     private Long id;
     private Long formId;
+    private Long sectionId;
     private String type;
     private String title;
     private String description;
@@ -29,6 +30,7 @@ public class QuestionResponse {
         return QuestionResponse.builder()
                 .id(question.getId())
                 .formId(question.getForm().getId())
+                .sectionId(question.getSection() != null ? question.getSection().getId() : null)
                 .type(question.getType())
                 .title(question.getTitle())
                 .description(question.getDescription())
