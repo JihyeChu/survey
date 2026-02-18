@@ -202,8 +202,33 @@
             form.publishedAt = new Date().toISOString();
 
             // 서버에서 반환된 질문 ID를 serverId로 저장 (첨부파일 업로드에 필요)
-            // 기존 프론트엔드 id는 유지
-            if (result.questions && result.questions.length > 0) {
+            // 섹션 구조가 있는 경우
+            if (result.sections && result.sections.length > 0 && form.sections && form.sections.length > 0) {
+                form.sections = form.sections.map((localSection, sectionIdx) => {
+                    const serverSection = result.sections[sectionIdx];
+                    if (serverSection && serverSection.questions) {
+                        return {
+                            ...localSection,
+                            questions: (localSection.questions || []).map((localQ, qIdx) => {
+                                const serverQ = serverSection.questions[qIdx];
+                                if (serverQ) {
+                                    return {
+                                        ...localQ,
+                                        serverId: serverQ.id,
+                                        attachmentFilename: serverQ.attachmentFilename || localQ.attachmentFilename,
+                                        attachmentStoredName: serverQ.attachmentStoredName || localQ.attachmentStoredName,
+                                        attachmentContentType: serverQ.attachmentContentType || localQ.attachmentContentType
+                                    };
+                                }
+                                return localQ;
+                            })
+                        };
+                    }
+                    return localSection;
+                });
+            }
+            // 루트 questions 구조 (하위 호환성)
+            else if (result.questions && result.questions.length > 0) {
                 form.questions = form.questions.map((localQ, idx) => {
                     const serverQ = result.questions[idx];
                     if (serverQ) {
@@ -229,10 +254,28 @@
 
         /**
          * 대기 중인 첨부파일 서버에 업로드
+         * 섹션 구조 및 루트 questions 구조 모두 지원
          * @param {Object} form - 폼 데이터
          */
         async _uploadPendingAttachments(form) {
-            const questionsWithPending = form.questions.filter(q => q.pendingAttachment);
+            // 섹션에서 pending attachment가 있는 질문 수집
+            let questionsWithPending = [];
+
+            if (form.sections && form.sections.length > 0) {
+                // 섹션 구조
+                form.sections.forEach(section => {
+                    if (section.questions) {
+                        section.questions.forEach(q => {
+                            if (q.pendingAttachment) {
+                                questionsWithPending.push({ ...q, _sectionId: section.id });
+                            }
+                        });
+                    }
+                });
+            } else {
+                // 루트 questions 구조
+                questionsWithPending = (form.questions || []).filter(q => q.pendingAttachment);
+            }
 
             if (questionsWithPending.length === 0) {
                 console.log('[Publish] No pending attachments to upload');
@@ -270,17 +313,36 @@
 
                     const updatedQuestion = await response.json();
 
-                    // 상태 업데이트
-                    const qIdx = form.questions.findIndex(q => q.id === question.id);
-                    if (qIdx >= 0) {
-                        form.questions[qIdx] = {
-                            ...form.questions[qIdx],
-                            pendingAttachment: null,
-                            attachmentFilename: updatedQuestion.attachmentFilename,
-                            attachmentStoredName: updatedQuestion.attachmentStoredName,
-                            attachmentContentType: updatedQuestion.attachmentContentType,
-                            attachmentPreviewUrl: null
-                        };
+                    // 상태 업데이트 (섹션 또는 루트 questions)
+                    if (question._sectionId) {
+                        // 섹션 내 질문 업데이트
+                        const section = form.sections.find(s => s.id === question._sectionId);
+                        if (section) {
+                            const qIdx = section.questions.findIndex(q => q.id === question.id);
+                            if (qIdx >= 0) {
+                                section.questions[qIdx] = {
+                                    ...section.questions[qIdx],
+                                    pendingAttachment: null,
+                                    attachmentFilename: updatedQuestion.attachmentFilename,
+                                    attachmentStoredName: updatedQuestion.attachmentStoredName,
+                                    attachmentContentType: updatedQuestion.attachmentContentType,
+                                    attachmentPreviewUrl: null
+                                };
+                            }
+                        }
+                    } else {
+                        // 루트 questions 업데이트
+                        const qIdx = form.questions.findIndex(q => q.id === question.id);
+                        if (qIdx >= 0) {
+                            form.questions[qIdx] = {
+                                ...form.questions[qIdx],
+                                pendingAttachment: null,
+                                attachmentFilename: updatedQuestion.attachmentFilename,
+                                attachmentStoredName: updatedQuestion.attachmentStoredName,
+                                attachmentContentType: updatedQuestion.attachmentContentType,
+                                attachmentPreviewUrl: null
+                            };
+                        }
                     }
 
                     console.log('[Publish] Uploaded attachment for question:', question.id);
@@ -323,47 +385,113 @@
         /**
          * 로컬 폼을 서버 형식으로 변환
          * config 필드에 옵션(RADIO/CHECKBOX)과 스케일 설정(LINEAR) 통합 저장
+         * sections 배열과 각 section의 questions 포함
          */
         _transformFormForServer(form) {
+            // 헬퍼 함수: 질문 객체를 서버 형식으로 변환
+            const transformQuestion = (q, idx) => {
+                let config = null;
+
+                // LINEAR 타입: scaleConfig 사용
+                if (q.type === 'linear-scale' && q.scaleConfig) {
+                    config = q.scaleConfig;
+                }
+                // RADIO/CHECKBOX 타입: options 배열을 config.options로 변환
+                else if ((q.type === 'multiple-choice' || q.type === 'checkbox') && q.options && q.options.length > 0) {
+                    config = {
+                        options: q.options.map((opt, optIdx) => ({
+                            id: opt.id || `opt_${optIdx}`,
+                            label: opt.label,
+                        })),
+                    };
+                }
+
+                return {
+                    type: q.type,
+                    title: q.title,
+                    description: q.description || '',
+                    required: q.required || false,
+                    orderIndex: idx,
+                    config: config,
+                };
+            };
+
             return {
                 title: form.title,
                 description: form.description || '',
                 settings: form.settings || {},
-                questions: (form.questions || []).map((q, idx) => {
-                    let config = null;
-
-                    // LINEAR 타입: scaleConfig 사용
-                    if (q.type === 'linear-scale' && q.scaleConfig) {
-                        config = q.scaleConfig;
-                    }
-                    // RADIO/CHECKBOX 타입: options 배열을 config.options로 변환
-                    else if ((q.type === 'multiple-choice' || q.type === 'checkbox') && q.options && q.options.length > 0) {
-                        config = {
-                            options: q.options.map((opt, optIdx) => ({
-                                id: opt.id || `opt_${optIdx}`,
-                                label: opt.label,
-                            })),
-                        };
-                    }
-
-                    return {
-                        type: q.type,
-                        title: q.title,
-                        description: q.description || '',
-                        required: q.required || false,
-                        orderIndex: idx,
-                        config: config,
-                    };
+                // 섹션이 있으면 섹션 구조로 전송
+                ...(form.sections && form.sections.length > 0 && {
+                    sections: form.sections.map((section, sectionIdx) => ({
+                        title: section.title,
+                        description: section.description || '',
+                        orderIndex: sectionIdx,
+                        questions: (section.questions || []).map((q, qIdx) =>
+                            transformQuestion(q, qIdx)
+                        ),
+                    })),
                 }),
+                // 섹션이 없으면 루트 questions 배열로 전송 (하위 호환성)
+                ...(!form.sections || form.sections.length === 0) && {
+                    questions: (form.questions || []).map((q, idx) =>
+                        transformQuestion(q, idx)
+                    ),
+                },
             };
         },
 
         /**
          * 서버 폼을 로컬 형식으로 변환
          * config 필드에서 옵션과 스케일 설정 분리
+         * sections 구조 지원
          */
         _transformFormFromServer(serverForm) {
-            return {
+            // 헬퍼 함수: 질문 객체를 로컬 형식으로 변환
+            const transformQuestion = (q) => {
+                let parsedConfig = null;
+                if (q.config) {
+                    try {
+                        parsedConfig = typeof q.config === 'string' ? JSON.parse(q.config) : q.config;
+                    } catch (e) {
+                        console.warn('Failed to parse config:', e);
+                    }
+                }
+
+                // config에서 옵션과 스케일 설정 분리
+                let options = [];
+                let scaleConfig = null;
+
+                if (parsedConfig) {
+                    if (parsedConfig.options) {
+                        // RADIO/CHECKBOX 타입
+                        options = parsedConfig.options.map((opt, idx) => ({
+                            id: opt.id || `opt_${idx}`,
+                            label: opt.label,
+                            order: idx,
+                        }));
+                    } else if (parsedConfig.min !== undefined || parsedConfig.max !== undefined) {
+                        // LINEAR 타입
+                        scaleConfig = parsedConfig;
+                    }
+                }
+
+                return {
+                    id: q.id,
+                    type: q.type,
+                    title: q.title,
+                    description: q.description || '',
+                    required: q.required,
+                    order: q.orderIndex,
+                    scaleConfig: scaleConfig,
+                    options: options,
+                    // Question Attachment fields (read-only for respondents)
+                    attachmentFilename: q.attachmentFilename,
+                    attachmentStoredName: q.attachmentStoredName,
+                    attachmentContentType: q.attachmentContentType,
+                };
+            };
+
+            const result = {
                 id: window.FormApp?.getForm()?.id || serverForm.id,
                 publishedId: serverForm.id,
                 title: serverForm.title,
@@ -371,52 +499,28 @@
                 createdAt: serverForm.createdAt,
                 updatedAt: serverForm.updatedAt,
                 publishedAt: new Date().toISOString(),
-                questions: (serverForm.questions || []).map(q => {
-                    let parsedConfig = null;
-                    if (q.config) {
-                        try {
-                            parsedConfig = typeof q.config === 'string' ? JSON.parse(q.config) : q.config;
-                        } catch (e) {
-                            console.warn('Failed to parse config:', e);
-                        }
-                    }
-
-                    // config에서 옵션과 스케일 설정 분리
-                    let options = [];
-                    let scaleConfig = null;
-
-                    if (parsedConfig) {
-                        if (parsedConfig.options) {
-                            // RADIO/CHECKBOX 타입
-                            options = parsedConfig.options.map((opt, idx) => ({
-                                id: opt.id || `opt_${idx}`,
-                                label: opt.label,
-                                order: idx,
-                            }));
-                        } else if (parsedConfig.min !== undefined || parsedConfig.max !== undefined) {
-                            // LINEAR 타입
-                            scaleConfig = parsedConfig;
-                        }
-                    }
-
-                    return {
-                        id: q.id,
-                        type: q.type,
-                        title: q.title,
-                        description: q.description || '',
-                        required: q.required,
-                        order: q.orderIndex,
-                        scaleConfig: scaleConfig,
-                        options: options,
-                        // Question Attachment fields (read-only for respondents)
-                        attachmentFilename: q.attachmentFilename,
-                        attachmentStoredName: q.attachmentStoredName,
-                        attachmentContentType: q.attachmentContentType,
-                    };
-                }),
                 settings: serverForm.settings || {},
                 responses: [],
+                questions: [],
+                sections: [],
             };
+
+            // 섹션 구조 처리
+            if (serverForm.sections && serverForm.sections.length > 0) {
+                result.sections = serverForm.sections.map((section) => ({
+                    id: section.id,
+                    title: section.title,
+                    description: section.description || '',
+                    orderIndex: section.orderIndex,
+                    questions: (section.questions || []).map(transformQuestion),
+                }));
+            }
+            // 루트 questions 구조 (하위 호환성)
+            else if (serverForm.questions && serverForm.questions.length > 0) {
+                result.questions = serverForm.questions.map(transformQuestion);
+            }
+
+            return result;
         },
     };
 
