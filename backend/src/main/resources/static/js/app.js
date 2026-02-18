@@ -162,11 +162,11 @@
             ];
         }
 
-        // Add linear scale config
+        // Add linear scale config (fixed to 1-10)
         if (type === 'linear-scale') {
             question.scaleConfig = {
                 min: 1,
-                max: 5,
+                max: 10,
                 minLabel: '',
                 maxLabel: ''
             };
@@ -2250,19 +2250,13 @@
             `;
         }
 
-        // Linear scale configuration
+        // Linear scale configuration (fixed 1-10 scale with optional labels)
         if (type === 'linear-scale') {
-            const config = question.scaleConfig || { min: 1, max: 5, minLabel: '', maxLabel: '' };
+            const config = question.scaleConfig || { min: 1, max: 10, minLabel: '', maxLabel: '' };
             return `
                 <div class="scale-config" data-question-id="${question.id}">
-                    <div class="scale-range">
-                        <select class="scale-select" data-field="scaleMin" data-question-id="${question.id}">
-                            ${[1, 0].map(v => `<option value="${v}" ${config.min === v ? 'selected' : ''}>${v}</option>`).join('')}
-                        </select>
-                        <span>~</span>
-                        <select class="scale-select" data-field="scaleMax" data-question-id="${question.id}">
-                            ${[2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option value="${v}" ${config.max === v ? 'selected' : ''}>${v}</option>`).join('')}
-                        </select>
+                    <div class="scale-info">
+                        <span class="scale-range-label">배율: 1 ~ 10</span>
                     </div>
                     <div class="scale-labels">
                         <input
@@ -2464,8 +2458,17 @@
                     handleFileDropOnQuestion(questionId, e.dataTransfer.files);
                 } else if (draggedElement && card !== draggedElement) {
                     // Question reordering
+                    const draggedSectionId = draggedElement.dataset.sectionId;
+                    const targetSectionId = card.dataset.sectionId;
                     const targetIndex = parseInt(card.dataset.index);
-                    reorderQuestions(draggedIndex, targetIndex);
+
+                    if (draggedSectionId === targetSectionId && draggedSectionId) {
+                        // Reordering within same section
+                        reorderQuestionsInSection(draggedSectionId, draggedIndex, targetIndex);
+                    } else {
+                        // Reordering in root questions or cross-section (use only root)
+                        reorderQuestions(draggedIndex, targetIndex);
+                    }
                 }
             });
         });
@@ -2496,6 +2499,43 @@
         renderQuestions();
 
         console.log('[DragDrop] Reordered questions:', fromIndex, '->', toIndex);
+    }
+
+    /**
+     * Reorder questions within a section
+     * @param {string} sectionId - Section ID
+     * @param {number} fromIndex - Source index within section
+     * @param {number} toIndex - Target index within section
+     */
+    function reorderQuestionsInSection(sectionId, fromIndex, toIndex) {
+        const sections = getSections();
+        const sectionIndex = sections.findIndex(s => s.id === sectionId);
+
+        if (sectionIndex === -1) return;
+
+        const section = sections[sectionIndex];
+        const questions = section.questions || [];
+
+        if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= questions.length || toIndex >= questions.length) {
+            return;
+        }
+
+        // Remove the question from its original position
+        const [movedQuestion] = questions.splice(fromIndex, 1);
+
+        // Insert at new position
+        questions.splice(toIndex, 0, movedQuestion);
+
+        // Update order for all questions in the section
+        questions.forEach((q, idx) => {
+            q.order = idx;
+            q.orderIndex = idx;
+        });
+
+        saveSections(sections);
+        renderQuestions();
+
+        console.log('[DragDrop] Reordered questions in section:', sectionId, fromIndex, '->', toIndex);
     }
 
     /**
@@ -3157,9 +3197,9 @@
                 question.options = [createDefaultOption(0)];
             }
 
-            // If changing to linear scale, ensure scaleConfig exists
+            // If changing to linear scale, ensure scaleConfig exists (fixed 1-10)
             if (newType === 'linear-scale' && !question.scaleConfig) {
-                question.scaleConfig = { min: 1, max: 5, minLabel: '', maxLabel: '' };
+                question.scaleConfig = { min: 1, max: 10, minLabel: '', maxLabel: '' };
             }
 
             if (isInSection) {
@@ -3544,10 +3584,9 @@
                 return '';
 
             case 'linear-scale':
-                const min = scaleConfig.min || 1;
-                const max = scaleConfig.max || 5;
+                // Fixed 1-10 scale
                 const scaleItems = [];
-                for (let i = min; i <= max; i++) {
+                for (let i = 1; i <= 10; i++) {
                     scaleItems.push(i);
                 }
                 return `
