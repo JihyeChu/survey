@@ -129,6 +129,7 @@
         publishedAt: null,          // Publish timestamp
         originalFormId: null,       // Reference to original published form (for draft copies)
         questions: [],
+        sections: [],              // Sections array
         settings: {
             collectEmail: false,
             allowResponseEdit: false,
@@ -192,6 +193,19 @@
         id: generateUUID(),
         label: `옵션 ${order + 1}`,
         order: order
+    });
+
+    /**
+     * Default Section Schema
+     * Creates a new section for organizing questions
+     * @param {number} orderIndex - Display order
+     */
+    const createDefaultSection = (orderIndex = 0) => ({
+        id: generateUUID(),
+        title: '섹션 제목',
+        description: '',
+        orderIndex: orderIndex,
+        questions: []
     });
 
     /**
@@ -300,6 +314,26 @@
     }
 
     /**
+     * Get total question count (from both root and sections)
+     */
+    function getTotalQuestionCount() {
+        const form = getForm();
+
+        // 섹션에 포함된 질문 수 계산
+        let sectionQuestionsCount = 0;
+        if (form.sections && form.sections.length > 0) {
+            sectionQuestionsCount = form.sections.reduce((sum, section) => {
+                return sum + (section.questions ? section.questions.length : 0);
+            }, 0);
+        }
+
+        // 루트 레벨 질문 수
+        const rootQuestionsCount = form.questions ? form.questions.length : 0;
+
+        return sectionQuestionsCount + rootQuestionsCount;
+    }
+
+    /**
      * Handle publish button click
      */
     async function handlePublish() {
@@ -309,7 +343,9 @@
         }
 
         const form = getForm();
-        if (!form.questions || form.questions.length === 0) {
+        const totalQuestions = getTotalQuestionCount();
+
+        if (totalQuestions === 0) {
             alert('최소 1개의 질문이 필요합니다.');
             return;
         }
@@ -1570,16 +1606,36 @@
     }
 
     /**
-     * Delete a question
+     * Delete a question (from root or section)
      * @param {string} questionId - ID of the question to delete
      */
     function deleteQuestion(questionId) {
-        const questions = getQuestions().filter(q => q.id !== questionId);
-        // Reorder remaining questions
-        questions.forEach((q, idx) => {
-            q.order = idx;
-        });
-        saveQuestions(questions);
+        const sections = getSections();
+        const questions = getQuestions();
+        let found = false;
+
+        // Try to find in sections first
+        for (let section of sections) {
+            if (section.questions) {
+                const index = section.questions.findIndex(q => q.id === questionId);
+                if (index > -1) {
+                    section.questions.splice(index, 1);
+                    saveSections(sections);
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, delete from root questions
+        if (!found) {
+            const filtered = questions.filter(q => q.id !== questionId);
+            filtered.forEach((q, idx) => {
+                q.order = idx;
+            });
+            saveQuestions(filtered);
+        }
+
         renderQuestions();
     }
 
@@ -1588,8 +1644,29 @@
      * @param {string} questionId - ID of the question to duplicate
      */
     function duplicateQuestion(questionId) {
+        const sections = getSections();
         const questions = getQuestions();
-        const questionToDuplicate = questions.find(q => q.id === questionId);
+        let questionToDuplicate = null;
+        let isInSection = false;
+        let sectionIndex = -1;
+
+        // Try to find in sections first
+        for (let i = 0; i < sections.length; i++) {
+            if (sections[i].questions) {
+                const found = sections[i].questions.find(q => q.id === questionId);
+                if (found) {
+                    questionToDuplicate = found;
+                    isInSection = true;
+                    sectionIndex = i;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, find in root questions
+        if (!questionToDuplicate) {
+            questionToDuplicate = questions.find(q => q.id === questionId);
+        }
 
         if (questionToDuplicate) {
             // Deep clone the question
@@ -1597,7 +1674,6 @@
 
             // Generate new IDs
             duplicatedQuestion.id = generateUUID();
-            duplicatedQuestion.order = questions.length;
 
             // Generate new IDs for options if they exist
             if (duplicatedQuestion.options && duplicatedQuestion.options.length > 0) {
@@ -1608,30 +1684,140 @@
                 }));
             }
 
-            questions.push(duplicatedQuestion);
-            saveQuestions(questions);
+            if (isInSection && sectionIndex > -1) {
+                // Add to section
+                duplicatedQuestion.order = sections[sectionIndex].questions.length;
+                sections[sectionIndex].questions.push(duplicatedQuestion);
+                saveSections(sections);
+            } else {
+                // Add to root
+                duplicatedQuestion.order = questions.length;
+                questions.push(duplicatedQuestion);
+                saveQuestions(questions);
+            }
+
             renderQuestions();
         }
     }
 
     /**
-     * Update a question
+     * Update a question (from root or section)
      * @param {string} questionId - ID of the question to update
      * @param {Object} updates - Object with fields to update
      */
     function updateQuestion(questionId, updates) {
+        const sections = getSections();
         const questions = getQuestions();
-        const question = questions.find(q => q.id === questionId);
+        let question = null;
+        let isInSection = false;
+
+        // Try to find in sections first
+        for (let section of sections) {
+            if (section.questions) {
+                question = section.questions.find(q => q.id === questionId);
+                if (question) {
+                    isInSection = true;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, find in root questions
+        if (!question) {
+            question = questions.find(q => q.id === questionId);
+        }
 
         if (question) {
             Object.assign(question, updates);
-            saveQuestions(questions);
-            // Only re-render if type changed (to show/hide options UI)
-            // For other fields, the input value is already updated
+
+            if (isInSection) {
+                saveSections(sections);
+            } else {
+                saveQuestions(questions);
+            }
+
+            // Only re-render if type changed
             if (updates.type) {
                 renderQuestions();
             }
         }
+    }
+
+    // ========================================================
+    // SECTION MANAGEMENT FUNCTIONS
+    // ========================================================
+
+    /**
+     * Add a new section
+     * @param {string} title - Section title (optional)
+     * @returns {Object} New section object
+     */
+    function addSection(title = '새 섹션') {
+        const sections = getSections();
+        const newSection = createDefaultSection(sections.length);
+        newSection.title = title;
+        sections.push(newSection);
+        saveSections(sections);
+        renderQuestions();
+        return newSection;
+    }
+
+    /**
+     * Delete a section and its questions
+     * @param {string} sectionId - ID of the section to delete
+     */
+    function deleteSection(sectionId) {
+        const sections = getSections();
+        const sectionIndex = sections.findIndex(s => s.id === sectionId);
+
+        if (sectionIndex !== -1) {
+            // 섹션 삭제 (섹션 내 질문도 함께 삭제)
+            const newSections = sections.filter(s => s.id !== sectionId);
+
+            // 섹션 orderIndex 재정렬
+            newSections.forEach((s, idx) => {
+                s.orderIndex = idx;
+            });
+
+            saveSections(newSections);
+            renderQuestions();
+
+            console.log(`[Section Delete] Deleted section "${sections[sectionIndex].title}" and ${(sections[sectionIndex].questions || []).length} questions`);
+        }
+    }
+
+    /**
+     * Update section title/description
+     * @param {string} sectionId - ID of the section
+     * @param {Object} updates - Updates object
+     */
+    function updateSection(sectionId, updates) {
+        const sections = getSections();
+        const section = sections.find(s => s.id === sectionId);
+
+        if (section) {
+            Object.assign(section, updates);
+            saveSections(sections);
+        }
+    }
+
+    /**
+     * Reorder sections
+     * @param {Array} sectionIds - Array of section IDs in new order
+     */
+    function reorderSections(sectionIds) {
+        const sections = getSections();
+        const newSections = [];
+
+        sectionIds.forEach((id, idx) => {
+            const section = sections.find(s => s.id === id);
+            if (section) {
+                section.orderIndex = idx;
+                newSections.push(section);
+            }
+        });
+
+        saveSections(newSections);
     }
 
     /**
@@ -1646,11 +1832,12 @@
         }
 
         const questions = getQuestions();
+        const sections = getSections();
         const readOnly = isFormReadOnly();
 
-        console.log('[FormApp] Rendering', questions.length, 'questions, readOnly:', readOnly);
+        console.log('[FormApp] Rendering', questions.length, 'questions,', sections.length, 'sections, readOnly:', readOnly);
 
-        if (questions.length === 0) {
+        if (questions.length === 0 && sections.length === 0) {
             const emptyMessage = readOnly
                 ? '<div class="empty-state"><h2>질문이 없습니다</h2><p>이 게시된 설문에는 질문이 없습니다.</p></div>'
                 : '<div class="empty-state"><h2>질문을 추가하세요</h2><p>아래 버튼을 클릭하여 첫 번째 질문을 시작하세요.</p><button class="btn btn-primary add-first-question-btn">첫 질문 추가</button></div>';
@@ -1667,82 +1854,217 @@
             return;
         }
 
-        questionsList.innerHTML = questions.map((question, index) => `
-            <div class="question-card" data-question-id="${question.id}" data-index="${index}" draggable="true">
-                <div class="question-card-header">
-                    <div class="question-number">${index + 1}</div>
-                    <div class="question-card-content">
-                        <input
-                            type="text"
-                            class="question-input"
-                            placeholder="질문을 입력하세요"
-                            value="${escapeHtml(question.title || '')}"
-                            data-field="title"
-                            data-question-id="${question.id}"
-                        />
-                        <textarea
-                            class="description-input"
-                            placeholder="설명 (선택사항)"
-                            data-field="description"
-                            data-question-id="${question.id}"
-                        >${escapeHtml(question.description || '')}</textarea>
-                    </div>
-                    <div class="question-card-actions">
-                        <button class="icon-button attachment-icon" title="첨부파일 추가" data-question-id="${question.id}">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-                            </svg>
-                        </button>
-                        <button class="icon-button delete delete-btn" title="삭제" data-question-id="${question.id}">
-                            ×
-                        </button>
-                    </div>
-                </div>
+        // Render sections and questions within sections
+        let html = '';
 
-                ${renderQuestionOptions(question)}
-
-                <!-- Question Attachment Preview Section -->
-                ${(question.attachmentStoredName || question.pendingAttachment) ? `
-                    <div class="question-attachment-preview" data-question-id="${question.id}">
-                        <div class="attachment-item ${question.pendingAttachment ? 'pending' : ''}">
-                            ${question.pendingAttachment ? '<span class="attachment-badge">임시저장</span>' : ''}
-                            <span class="attachment-label">첨부파일:</span>
-                            <span class="attachment-name">${escapeHtml(question.attachmentFilename || question.attachmentStoredName || '')}</span>
-                            <button class="btn-remove-attachment" data-question-id="${question.id}" title="첨부파일 삭제">×</button>
+        // Render sections if they exist
+        if (sections.length > 0) {
+            html = sections.map((section, sectionIndex) => {
+                const sectionQuestions = section.questions || [];
+                return `
+                    <div class="section-card" data-section-id="${section.id}" data-section-index="${sectionIndex}" draggable="true">
+                        <div class="section-header">
+                            <div class="section-title-container">
+                                <input
+                                    type="text"
+                                    class="section-title-input"
+                                    placeholder="섹션 제목"
+                                    value="${escapeHtml(section.title || '')}"
+                                    data-section-id="${section.id}"
+                                    data-field="title"
+                                />
+                            </div>
+                            ${!readOnly ? `
+                                <button class="icon-button delete delete-section-btn" title="섹션 삭제" data-section-id="${section.id}">
+                                    ×
+                                </button>
+                            ` : ''}
                         </div>
-                        ${question.attachmentPreviewUrl && question.attachmentContentType?.startsWith('image/') ? `
-                            <div class="attachment-image-preview">
-                                <img src="${question.attachmentPreviewUrl}" alt="첨부 이미지 미리보기" />
+
+                        <textarea
+                            class="section-description-input"
+                            placeholder="섹션 설명 (선택사항)"
+                            data-section-id="${section.id}"
+                            data-field="description"
+                        >${escapeHtml(section.description || '')}</textarea>
+
+                        <div class="section-questions">
+                            ${sectionQuestions.length > 0 ? sectionQuestions.map((question, qIndex) => `
+                                <div class="question-card" data-question-id="${question.id}" data-section-id="${section.id}" draggable="true">
+                                    <div class="question-card-header">
+                                        <div class="question-number">${qIndex + 1}</div>
+                                        <div class="question-card-content">
+                                            <input
+                                                type="text"
+                                                class="question-input"
+                                                placeholder="질문을 입력하세요"
+                                                value="${escapeHtml(question.title || '')}"
+                                                data-field="title"
+                                                data-question-id="${question.id}"
+                                            />
+                                            <textarea
+                                                class="description-input"
+                                                placeholder="설명 (선택사항)"
+                                                data-field="description"
+                                                data-question-id="${question.id}"
+                                            >${escapeHtml(question.description || '')}</textarea>
+                                        </div>
+                                        <div class="question-card-actions">
+                                            <button class="icon-button attachment-icon" title="첨부파일 추가" data-question-id="${question.id}">
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                                                </svg>
+                                            </button>
+                                            <button class="icon-button delete delete-btn" title="삭제" data-question-id="${question.id}">
+                                                ×
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    ${renderQuestionOptions(question)}
+
+                                    ${(question.attachmentStoredName || question.pendingAttachment) ? `
+                                        <div class="question-attachment-preview" data-question-id="${question.id}">
+                                            <div class="attachment-item ${question.pendingAttachment ? 'pending' : ''}">
+                                                ${question.pendingAttachment ? '<span class="attachment-badge">임시저장</span>' : ''}
+                                                <span class="attachment-label">첨부파일:</span>
+                                                <span class="attachment-name">${escapeHtml(question.attachmentFilename || question.attachmentStoredName || '')}</span>
+                                                <button class="btn-remove-attachment" data-question-id="${question.id}" title="첨부파일 삭제">×</button>
+                                            </div>
+                                            ${question.attachmentPreviewUrl && question.attachmentContentType?.startsWith('image/') ? `
+                                                <div class="attachment-image-preview">
+                                                    <img src="${question.attachmentPreviewUrl}" alt="첨부 이미지 미리보기" />
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    ` : ''}
+
+                                    <div class="question-card-footer">
+                                        <div class="option-group">
+                                            <select class="question-type-dropdown" data-field="type" data-question-id="${question.id}">
+                                                ${Object.entries(QUESTION_TYPES).map(([key, label]) => `
+                                                    <option value="${key}" ${question.type === key ? 'selected' : ''}>${label}</option>
+                                                `).join('')}
+                                            </select>
+                                        </div>
+                                        <label class="toggle-required">
+                                            <input
+                                                type="checkbox"
+                                                class="toggle-checkbox"
+                                                ${question.required ? 'checked' : ''}
+                                                data-field="required"
+                                                data-question-id="${question.id}"
+                                            />
+                                            필수
+                                        </label>
+                                    </div>
+                                </div>
+                            `).join('') : ''}
+                        </div>
+
+                        ${!readOnly ? `
+                            <div class="section-add-question">
+                                <button class="btn-add-question-in-section" data-section-id="${section.id}">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                                    </svg>
+                                    질문 추가
+                                </button>
                             </div>
                         ` : ''}
                     </div>
-                ` : ''}
+                `;
+            }).join('');
+        }
 
-                <div class="question-card-footer">
-                    <div class="option-group">
-                        <select class="question-type-dropdown" data-field="type" data-question-id="${question.id}">
-                            ${Object.entries(QUESTION_TYPES).map(([key, label]) => `
-                                <option value="${key}" ${question.type === key ? 'selected' : ''}>${label}</option>
-                            `).join('')}
-                        </select>
+        // Render non-sectioned questions
+        if (questions.length > 0 && sections.length === 0) {
+            html += questions.map((question, index) => `
+                <div class="question-card" data-question-id="${question.id}" data-index="${index}" draggable="true">
+                    <div class="question-card-header">
+                        <div class="question-number">${index + 1}</div>
+                        <div class="question-card-content">
+                            <input
+                                type="text"
+                                class="question-input"
+                                placeholder="질문을 입력하세요"
+                                value="${escapeHtml(question.title || '')}"
+                                data-field="title"
+                                data-question-id="${question.id}"
+                            />
+                            <textarea
+                                class="description-input"
+                                placeholder="설명 (선택사항)"
+                                data-field="description"
+                                data-question-id="${question.id}"
+                            >${escapeHtml(question.description || '')}</textarea>
+                        </div>
+                        <div class="question-card-actions">
+                            <button class="icon-button attachment-icon" title="첨부파일 추가" data-question-id="${question.id}">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                                </svg>
+                            </button>
+                            <button class="icon-button delete delete-btn" title="삭제" data-question-id="${question.id}">
+                                ×
+                            </button>
+                        </div>
                     </div>
-                    <label class="toggle-required">
-                        <input
-                            type="checkbox"
-                            class="toggle-checkbox"
-                            ${question.required ? 'checked' : ''}
-                            data-field="required"
-                            data-question-id="${question.id}"
-                        />
-                        필수
-                    </label>
-                </div>
-            </div>
-        `).join('');
 
-        // Add single "Add Question" button at the bottom (Google Forms style)
+                    ${renderQuestionOptions(question)}
+
+                    ${(question.attachmentStoredName || question.pendingAttachment) ? `
+                        <div class="question-attachment-preview" data-question-id="${question.id}">
+                            <div class="attachment-item ${question.pendingAttachment ? 'pending' : ''}">
+                                ${question.pendingAttachment ? '<span class="attachment-badge">임시저장</span>' : ''}
+                                <span class="attachment-label">첨부파일:</span>
+                                <span class="attachment-name">${escapeHtml(question.attachmentFilename || question.attachmentStoredName || '')}</span>
+                                <button class="btn-remove-attachment" data-question-id="${question.id}" title="첨부파일 삭제">×</button>
+                            </div>
+                            ${question.attachmentPreviewUrl && question.attachmentContentType?.startsWith('image/') ? `
+                                <div class="attachment-image-preview">
+                                    <img src="${question.attachmentPreviewUrl}" alt="첨부 이미지 미리보기" />
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+
+                    <div class="question-card-footer">
+                        <div class="option-group">
+                            <select class="question-type-dropdown" data-field="type" data-question-id="${question.id}">
+                                ${Object.entries(QUESTION_TYPES).map(([key, label]) => `
+                                    <option value="${key}" ${question.type === key ? 'selected' : ''}>${label}</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        <label class="toggle-required">
+                            <input
+                                type="checkbox"
+                                class="toggle-checkbox"
+                                ${question.required ? 'checked' : ''}
+                                data-field="required"
+                                data-question-id="${question.id}"
+                            />
+                            필수
+                        </label>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        questionsList.innerHTML = html;
+
+        // Add buttons at the bottom
         if (!readOnly) {
             questionsList.innerHTML += `
+                <div class="add-section-container">
+                    <button class="btn btn-add-section" id="add-section-btn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                        </svg>
+                        섹션 추가
+                    </button>
+                </div>
                 <div class="add-question-container">
                     <button class="btn btn-add-question-full" id="add-question-bottom-btn">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -1756,7 +2078,9 @@
 
         // Attach event listeners
         attachQuestionEventListeners();
+        attachSectionEventListeners();
         attachAddQuestionButtonListener();
+        attachAddSectionButtonListener();
 
         // Update read-only state if needed
         if (readOnly) {
@@ -1773,6 +2097,90 @@
             addBtn.addEventListener('click', () => {
                 addQuestion();
             });
+        }
+    }
+
+    /**
+     * Attach event listener for the bottom "Add Section" button
+     */
+    function attachAddSectionButtonListener() {
+        const addSectionBtn = document.getElementById('add-section-btn');
+        if (addSectionBtn) {
+            addSectionBtn.addEventListener('click', () => {
+                addSection();
+            });
+        }
+    }
+
+    /**
+     * Attach event listeners for sections
+     */
+    function attachSectionEventListeners() {
+        // Delete section buttons
+        document.querySelectorAll('.delete-section-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const sectionId = e.currentTarget.dataset.sectionId;
+                if (confirm('이 섹션을 삭제하시겠습니까? 섹션의 질문들은 유지됩니다.')) {
+                    deleteSection(sectionId);
+                }
+            });
+        });
+
+        // Section title inputs
+        document.querySelectorAll('.section-title-input').forEach(input => {
+            input.addEventListener('blur', (e) => {
+                const sectionId = e.target.dataset.sectionId;
+                const title = e.target.value.trim();
+                updateSection(sectionId, { title: title || '새 섹션' });
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.target.blur();
+                }
+            });
+        });
+
+        // Section description inputs
+        document.querySelectorAll('.section-description-input').forEach(input => {
+            input.addEventListener('blur', (e) => {
+                const sectionId = e.target.dataset.sectionId;
+                const description = e.target.value.trim();
+                updateSection(sectionId, { description });
+            });
+        });
+
+        // Add question in section buttons
+        document.querySelectorAll('.btn-add-question-in-section').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const sectionId = e.currentTarget.dataset.sectionId;
+                addQuestionToSection(sectionId);
+            });
+        });
+    }
+
+    /**
+     * Add a question to a specific section
+     * @param {string} sectionId - ID of the section
+     * @param {string} type - Question type (optional)
+     */
+    function addQuestionToSection(sectionId, type = 'short-text') {
+        const sections = getSections();
+        const section = sections.find(s => s.id === sectionId);
+
+        if (section) {
+            const newQuestion = createDefaultQuestion(type, section.questions.length);
+            section.questions.push(newQuestion);
+            saveSections(sections);
+            renderQuestions();
+
+            // Scroll to new question
+            setTimeout(() => {
+                const newCard = document.querySelector(`[data-question-id="${newQuestion.id}"]`);
+                if (newCard) {
+                    newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
         }
     }
 
@@ -2117,14 +2525,36 @@
         const optionId = event.target.dataset.optionId;
         const value = event.target.value;
 
+        const sections = getSections();
         const questions = getQuestions();
-        const question = questions.find(q => q.id === questionId);
+        let question = null;
+        let isInSection = false;
+
+        // Try to find in sections first
+        for (let section of sections) {
+            if (section.questions) {
+                question = section.questions.find(q => q.id === questionId);
+                if (question) {
+                    isInSection = true;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, find in root questions
+        if (!question) {
+            question = questions.find(q => q.id === questionId);
+        }
 
         if (question && question.options) {
             const option = question.options.find(o => o.id === optionId);
             if (option) {
                 option.label = value;
-                saveQuestions(questions);
+                if (isInSection) {
+                    saveSections(sections);
+                } else {
+                    saveQuestions(questions);
+                }
             }
         }
     }
@@ -2134,8 +2564,26 @@
      * @param {string} questionId - Question ID
      */
     function addOptionToQuestion(questionId) {
+        const sections = getSections();
         const questions = getQuestions();
-        const question = questions.find(q => q.id === questionId);
+        let question = null;
+        let isInSection = false;
+
+        // Try to find in sections first
+        for (let section of sections) {
+            if (section.questions) {
+                question = section.questions.find(q => q.id === questionId);
+                if (question) {
+                    isInSection = true;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, find in root questions
+        if (!question) {
+            question = questions.find(q => q.id === questionId);
+        }
 
         if (question) {
             if (!question.options) {
@@ -2143,7 +2591,13 @@
             }
             const newOption = createDefaultOption(question.options.length);
             question.options.push(newOption);
-            saveQuestions(questions);
+
+            if (isInSection) {
+                saveSections(sections);
+            } else {
+                saveQuestions(questions);
+            }
+
             renderQuestions();
 
             // Focus on the new option input
@@ -2162,8 +2616,26 @@
      * @param {string} optionId - Option ID
      */
     function deleteOptionFromQuestion(questionId, optionId) {
+        const sections = getSections();
         const questions = getQuestions();
-        const question = questions.find(q => q.id === questionId);
+        let question = null;
+        let isInSection = false;
+
+        // Try to find in sections first
+        for (let section of sections) {
+            if (section.questions) {
+                question = section.questions.find(q => q.id === questionId);
+                if (question) {
+                    isInSection = true;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, find in root questions
+        if (!question) {
+            question = questions.find(q => q.id === questionId);
+        }
 
         if (question && question.options) {
             // Prevent deleting if only one option remains
@@ -2176,7 +2648,13 @@
             question.options.forEach((opt, idx) => {
                 opt.order = idx;
             });
-            saveQuestions(questions);
+
+            if (isInSection) {
+                saveSections(sections);
+            } else {
+                saveQuestions(questions);
+            }
+
             renderQuestions();
         }
     }
@@ -2202,15 +2680,36 @@
      */
     async function uploadQuestionAttachment(questionId, file) {
         const form = getForm();
+        const sections = getSections();
         const questions = getQuestions();
-        const questionIndex = questions.findIndex(q => String(q.id) === String(questionId));
+        let question = null;
+        let questionIndex = -1;
+        let isInSection = false;
 
-        if (questionIndex < 0) {
+        // Try to find in sections first
+        for (let i = 0; i < sections.length; i++) {
+            if (sections[i].questions) {
+                questionIndex = sections[i].questions.findIndex(q => String(q.id) === String(questionId));
+                if (questionIndex > -1) {
+                    question = sections[i].questions[questionIndex];
+                    isInSection = true;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, find in root questions
+        if (!question) {
+            questionIndex = questions.findIndex(q => String(q.id) === String(questionId));
+            if (questionIndex > -1) {
+                question = questions[questionIndex];
+            }
+        }
+
+        if (!question) {
             alert('질문 정보를 찾을 수 없습니다.');
             return;
         }
-
-        const question = questions[questionIndex];
 
         // Use serverId for API call (set when form is published)
         const serverQuestionId = question.serverId || question.id;
@@ -2237,15 +2736,32 @@
             const updatedQuestion = await response.json();
 
             // Update question in state with attachment data, clear pending
-            questions[questionIndex] = {
-                ...questions[questionIndex],
+            const updatedData = {
+                ...question,
                 pendingAttachment: null,
                 attachmentFilename: updatedQuestion.attachmentFilename,
                 attachmentStoredName: updatedQuestion.attachmentStoredName,
                 attachmentContentType: updatedQuestion.attachmentContentType,
                 attachmentPreviewUrl: null
             };
-            saveQuestions(questions);
+
+            if (isInSection) {
+                // Find the section again and update
+                for (let section of sections) {
+                    if (section.questions) {
+                        const idx = section.questions.findIndex(q => String(q.id) === String(questionId));
+                        if (idx > -1) {
+                            section.questions[idx] = updatedData;
+                            break;
+                        }
+                    }
+                }
+                saveSections(sections);
+            } else {
+                questions[questionIndex] = updatedData;
+                saveQuestions(questions);
+            }
+
             renderQuestions();
             console.log('[Attachment] Uploaded to server for question:', questionId);
         } catch (error) {
@@ -2285,16 +2801,39 @@
      */
     async function handleAttachmentFile(questionId, file) {
         const form = getForm();
+        const sections = getSections();
         const questions = getQuestions();
-        const questionIndex = questions.findIndex(q => String(q.id) === String(questionId));
+        let question = null;
+        let questionIndex = -1;
+        let isInSection = false;
 
-        if (questionIndex < 0) {
+        // Try to find in sections first
+        for (let i = 0; i < sections.length; i++) {
+            if (sections[i].questions) {
+                questionIndex = sections[i].questions.findIndex(q => String(q.id) === String(questionId));
+                if (questionIndex > -1) {
+                    question = sections[i].questions[questionIndex];
+                    isInSection = true;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, find in root questions
+        if (!question) {
+            questionIndex = questions.findIndex(q => String(q.id) === String(questionId));
+            if (questionIndex > -1) {
+                question = questions[questionIndex];
+            }
+        }
+
+        if (!question) {
             alert('질문 정보를 찾을 수 없습니다.');
             return;
         }
 
         // If form is published, upload directly to server
-        if (form.publishedId && questions[questionIndex].serverId) {
+        if (form.publishedId && question.serverId) {
             await uploadQuestionAttachment(questionId, file);
             return;
         }
@@ -2302,8 +2841,8 @@
         // If not published, store file as base64 locally
         try {
             const base64Data = await fileToBase64(file);
-            questions[questionIndex] = {
-                ...questions[questionIndex],
+            const updatedData = {
+                ...question,
                 pendingAttachment: {
                     filename: file.name,
                     contentType: file.type,
@@ -2314,7 +2853,24 @@
                 attachmentContentType: file.type,
                 attachmentPreviewUrl: base64Data
             };
-            saveQuestions(questions);
+
+            if (isInSection) {
+                // Find the section again and update
+                for (let section of sections) {
+                    if (section.questions) {
+                        const idx = section.questions.findIndex(q => String(q.id) === String(questionId));
+                        if (idx > -1) {
+                            section.questions[idx] = updatedData;
+                            break;
+                        }
+                    }
+                }
+                saveSections(sections);
+            } else {
+                questions[questionIndex] = updatedData;
+                saveQuestions(questions);
+            }
+
             renderQuestions();
             console.log('[Attachment] File stored locally for question:', questionId);
         } catch (error) {
@@ -2347,26 +2903,63 @@
         }
 
         const form = getForm();
+        const sections = getSections();
         const questions = getQuestions();
-        const questionIndex = questions.findIndex(q => String(q.id) === String(questionId));
+        let question = null;
+        let questionIndex = -1;
+        let isInSection = false;
 
-        if (questionIndex < 0) {
+        // Try to find in sections first
+        for (let i = 0; i < sections.length; i++) {
+            if (sections[i].questions) {
+                questionIndex = sections[i].questions.findIndex(q => String(q.id) === String(questionId));
+                if (questionIndex > -1) {
+                    question = sections[i].questions[questionIndex];
+                    isInSection = true;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, find in root questions
+        if (!question) {
+            questionIndex = questions.findIndex(q => String(q.id) === String(questionId));
+            if (questionIndex > -1) {
+                question = questions[questionIndex];
+            }
+        }
+
+        if (!question) {
             alert('질문 정보를 찾을 수 없습니다.');
             return;
         }
 
-        const question = questions[questionIndex];
-
         // If has pending attachment (not uploaded to server yet), just remove locally
         if (question.pendingAttachment) {
-            questions[questionIndex] = {
-                ...questions[questionIndex],
+            const updatedData = {
+                ...question,
                 pendingAttachment: null,
                 attachmentFilename: null,
                 attachmentContentType: null,
                 attachmentPreviewUrl: null
             };
-            saveQuestions(questions);
+
+            if (isInSection) {
+                for (let section of sections) {
+                    if (section.questions) {
+                        const idx = section.questions.findIndex(q => String(q.id) === String(questionId));
+                        if (idx > -1) {
+                            section.questions[idx] = updatedData;
+                            break;
+                        }
+                    }
+                }
+                saveSections(sections);
+            } else {
+                questions[questionIndex] = updatedData;
+                saveQuestions(questions);
+            }
+
             renderQuestions();
             console.log('[Attachment] Pending attachment removed for question:', questionId);
             return;
@@ -2384,14 +2977,30 @@
                 }
 
                 // Clear attachment fields from question in state
-                questions[questionIndex] = {
-                    ...questions[questionIndex],
+                const updatedData = {
+                    ...question,
                     attachmentFilename: null,
                     attachmentStoredName: null,
                     attachmentContentType: null,
                     attachmentPreviewUrl: null
                 };
-                saveQuestions(questions);
+
+                if (isInSection) {
+                    for (let section of sections) {
+                        if (section.questions) {
+                            const idx = section.questions.findIndex(q => String(q.id) === String(questionId));
+                            if (idx > -1) {
+                                section.questions[idx] = updatedData;
+                                break;
+                            }
+                        }
+                    }
+                    saveSections(sections);
+                } else {
+                    questions[questionIndex] = updatedData;
+                    saveQuestions(questions);
+                }
+
                 renderQuestions();
                 console.log('[Attachment] Server attachment deleted for question:', questionId);
             } catch (error) {
@@ -2400,14 +3009,30 @@
             }
         } else {
             // No server attachment, just clear local state
-            questions[questionIndex] = {
-                ...questions[questionIndex],
+            const updatedData = {
+                ...question,
                 attachmentFilename: null,
                 attachmentStoredName: null,
                 attachmentContentType: null,
                 attachmentPreviewUrl: null
             };
-            saveQuestions(questions);
+
+            if (isInSection) {
+                for (let section of sections) {
+                    if (section.questions) {
+                        const idx = section.questions.findIndex(q => String(q.id) === String(questionId));
+                        if (idx > -1) {
+                            section.questions[idx] = updatedData;
+                            break;
+                        }
+                    }
+                }
+                saveSections(sections);
+            } else {
+                questions[questionIndex] = updatedData;
+                saveQuestions(questions);
+            }
+
             renderQuestions();
         }
     }
@@ -2447,8 +3072,26 @@
      * @param {string} value - New value
      */
     function handleScaleConfigChange(questionId, field, value) {
+        const sections = getSections();
         const questions = getQuestions();
-        const question = questions.find(q => q.id === questionId);
+        let question = null;
+        let isInSection = false;
+
+        // Try to find in sections first
+        for (let section of sections) {
+            if (section.questions) {
+                question = section.questions.find(q => q.id === questionId);
+                if (question) {
+                    isInSection = true;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, find in root questions
+        if (!question) {
+            question = questions.find(q => q.id === questionId);
+        }
 
         if (question) {
             if (!question.scaleConfig) {
@@ -2470,7 +3113,11 @@
                     break;
             }
 
-            saveQuestions(questions);
+            if (isInSection) {
+                saveSections(sections);
+            } else {
+                saveQuestions(questions);
+            }
         }
     }
 
@@ -2480,8 +3127,26 @@
      * @param {string} newType - New question type
      */
     function handleTypeChange(questionId, newType) {
+        const sections = getSections();
         const questions = getQuestions();
-        const question = questions.find(q => q.id === questionId);
+        let question = null;
+        let isInSection = false;
+
+        // Try to find in sections first
+        for (let section of sections) {
+            if (section.questions) {
+                question = section.questions.find(q => q.id === questionId);
+                if (question) {
+                    isInSection = true;
+                    break;
+                }
+            }
+        }
+
+        // If not found in sections, find in root questions
+        if (!question) {
+            question = questions.find(q => q.id === questionId);
+        }
 
         if (question) {
             const oldType = question.type;
@@ -2497,7 +3162,12 @@
                 question.scaleConfig = { min: 1, max: 5, minLabel: '', maxLabel: '' };
             }
 
-            saveQuestions(questions);
+            if (isInSection) {
+                saveSections(sections);
+            } else {
+                saveQuestions(questions);
+            }
+
             renderQuestions();
         }
     }
@@ -3017,6 +3687,25 @@
     function saveQuestions(questions) {
         const form = getForm();
         form.questions = questions;
+        saveForm(form);
+    }
+
+    /**
+     * Get sections array from form
+     * @returns {Array} Sections array
+     */
+    function getSections() {
+        const form = getForm();
+        return form.sections || [];
+    }
+
+    /**
+     * Save sections array to form
+     * @param {Array} sections - Sections array
+     */
+    function saveSections(sections) {
+        const form = getForm();
+        form.sections = sections;
         saveForm(form);
     }
 
