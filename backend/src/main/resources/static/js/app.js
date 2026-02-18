@@ -279,8 +279,6 @@
      * Initialize the application
      */
     function init() {
-        console.log('[FormApp] Initializing...');
-
         setupTabNavigation();
         setupTitleEditing();
         setupBuilder();
@@ -290,10 +288,6 @@
         setupFormListModal();
         restoreState();
         updateReadOnlyBanner();
-
-        console.log('[FormApp] Initialization complete');
-        console.log('[FormApp] questions-list element:', questionsList);
-        console.log('[FormApp] Current questions:', getQuestions());
     }
 
     // ========================================================
@@ -826,48 +820,41 @@
     }
 
     /**
-     * Create a draft copy of a published form for editing
-     * @returns {Object} New draft form
+     * Enable editing mode for published form
+     * Allows direct editing without creating a copy
      */
-    function createDraftCopyForEdit() {
+    function enableEditMode() {
         const currentForm = getForm();
 
-        if (currentForm.status !== FORM_STATUS.PUBLISHED) {
-            return currentForm;
+        // Change status to draft for editing (directly in localStorage without triggering sync status)
+        currentForm.status = FORM_STATUS.DRAFT;
+
+        // Save directly to localStorage without triggering "수정됨" status
+        try {
+            const state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            state.form = currentForm;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (e) {
+            console.error('Failed to save form to edit mode:', e);
         }
 
-        // Create a new draft copy
-        const draftCopy = {
-            ...JSON.parse(JSON.stringify(currentForm)),
-            id: generateUUID(),
-            status: FORM_STATUS.DRAFT,
-            originalFormId: currentForm.publishedId || currentForm.id,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
-
-        // Generate new IDs for questions and options
-        draftCopy.questions = draftCopy.questions.map(q => ({
-            ...q,
-            id: generateUUID(),
-            options: (q.options || []).map(opt => ({
-                ...opt,
-                id: generateUUID()
-            }))
-        }));
-
-        // Save and switch to the draft
-        saveForm(draftCopy);
-        saveToDraftForms(draftCopy);
-
-        if (formTitleElement) {
-            formTitleElement.textContent = draftCopy.title;
+        // Hide the readonly banner
+        const banner = document.querySelector('.readonly-banner');
+        if (banner) {
+            banner.style.display = 'none';
+            banner.classList.remove('visible');
         }
-        renderQuestions();
-        updateSyncStatus();
-        updateReadOnlyBanner();
 
-        return draftCopy;
+        // Enable editing UI
+        enableEditingUI();
+
+        // Clear sync status (no "임시저장" message)
+        setSyncStatus('saved', '');
+    }
+
+    // Keep old function for backwards compatibility but make it call enableEditMode
+    function createDraftCopyForEdit() {
+        enableEditMode();
     }
 
     /**
@@ -885,8 +872,8 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
                     </svg>
-                    <span class="readonly-banner-text">이 설문은 게시된 상태입니다. 수정하려면 복사본을 만들어 편집하세요.</span>
-                    <button class="readonly-banner-btn" id="create-draft-copy-btn">복사본 만들기</button>
+                    <span class="readonly-banner-text">이 설문은 게시된 상태입니다.</span>
+                    <button class="readonly-banner-btn" id="enable-edit-btn">수정하기</button>
                 `;
 
                 // Insert after header
@@ -896,14 +883,19 @@
                 }
             }
 
+            banner.style.display = '';
             banner.classList.add('visible');
 
             // Attach event listener
-            const copyBtn = banner.querySelector('#create-draft-copy-btn');
-            if (copyBtn) {
-                copyBtn.onclick = () => {
-                    createDraftCopyForEdit();
-                };
+            const editBtn = banner.querySelector('#enable-edit-btn');
+            if (editBtn) {
+                // Remove old listener and add new one
+                editBtn.onclick = null;
+                editBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    enableEditMode();
+                });
             }
 
             // Disable editing UI
@@ -911,6 +903,7 @@
         } else {
             if (banner) {
                 banner.classList.remove('visible');
+                banner.style.display = 'none';
             }
             // Enable editing UI
             enableEditingUI();
@@ -932,7 +925,7 @@
         });
 
         // Hide action buttons
-        document.querySelectorAll('.delete-btn, .duplicate-btn, .add-option-btn, .delete-option-btn').forEach(el => {
+        document.querySelectorAll('.delete-btn, .add-option-btn, .delete-option-btn').forEach(el => {
             el.style.display = 'none';
         });
 
@@ -962,7 +955,7 @@
         });
 
         // Show action buttons
-        document.querySelectorAll('.delete-btn, .duplicate-btn, .add-option-btn, .delete-option-btn').forEach(el => {
+        document.querySelectorAll('.delete-btn, .add-option-btn, .delete-option-btn').forEach(el => {
             el.style.display = '';
         });
 
@@ -1137,8 +1130,6 @@
         const tableContainer = document.getElementById('responses-table-container');
         const countElement = document.querySelector('.response-count');
 
-        console.log('[Response Tab] Form data:', { id: form.id, publishedId: form.publishedId, title: form.title });
-
         // 서버에서 유효한 폼 ID 확인
         let formId = null;
         try {
@@ -1149,26 +1140,22 @@
                     const existingForm = serverForms.find(f => f.id === form.publishedId);
                     if (existingForm) {
                         formId = form.publishedId;
-                    } else {
-                        console.log('[Response Tab] publishedId not found on server, searching...');
                     }
                 }
                 // formId가 없으면 제목으로 매칭 또는 첫 번째 폼 사용
                 if (!formId) {
                     const matchingForm = serverForms.find(f => f.title === form.title) || serverForms[0];
                     formId = matchingForm.id;
-                    console.log('[Response Tab] Using server form:', formId);
                     form.publishedId = formId;
                     saveForm(form);
                 }
             }
         } catch (e) {
-            console.warn('[Response Tab] Failed to fetch server forms:', e);
+            console.error('Failed to fetch server forms:', e);
         }
 
         // 여전히 formId가 없으면 게시되지 않은 상태 표시
         if (!formId) {
-            console.log('[Response Tab] Form not published');
             if (shareUrlSection) shareUrlSection.style.display = 'none';
             if (notPublished) notPublished.style.display = 'block';
             if (emptyState) emptyState.style.display = 'none';
@@ -1193,16 +1180,10 @@
             if (refreshBtn) refreshBtn.classList.add('loading');
 
             // 서버에서 폼과 응답 모두 가져오기 (질문 ID 매칭을 위해)
-            console.log('[Response Tab] Fetching from server, formId:', formId);
             const [responses, serverForm] = await Promise.all([
                 window.ResponseAPI.list(formId),
                 window.FormAPI.get(formId)
             ]);
-
-            console.log('[Response Tab] Loaded:', {
-                responsesCount: responses.length,
-                questionsCount: serverForm.questions?.length || 0
-            });
 
             if (refreshBtn) refreshBtn.classList.remove('loading');
 
@@ -1221,7 +1202,7 @@
                 renderResponsesTable(responses, serverForm);
             }
         } catch (error) {
-            console.error('[Response Tab] 응답 로딩 실패:', error);
+            console.error('Failed to load responses:', error);
             if (countElement) countElement.textContent = '0';
             if (notPublished) notPublished.style.display = 'none';
             if (emptyState) {
@@ -1236,19 +1217,11 @@
      * 응답 테이블 렌더링
      */
     function renderResponsesTable(responses, form) {
-        console.log('[renderResponsesTable] Called with:', {
-            responsesCount: responses?.length,
-            questionsCount: form?.questions?.length,
-            formId: form?.id
-        });
-
         const thead = document.getElementById('responses-table-head');
         const tbody = document.getElementById('responses-table-body');
 
-        console.log('[renderResponsesTable] DOM elements:', { thead: !!thead, tbody: !!tbody });
-
         if (!thead || !tbody) {
-            console.error('[renderResponsesTable] Missing DOM elements!');
+            console.error('Missing response table DOM elements');
             return;
         }
 
@@ -1269,7 +1242,7 @@
                     : form.settings;
                 collectEmail = settings.collectEmail === true;
             } catch (e) {
-                console.warn('Failed to parse form settings:', e);
+                // Settings parse error - continue with default
             }
         }
 
@@ -1283,11 +1256,9 @@
         `;
 
         // 테이블 본문
-        console.log('[renderResponsesTable] Building table body...');
         tbody.innerHTML = responses.map(response => {
             const submittedAt = new Date(response.submittedAt).toLocaleString('ko-KR');
             const answers = response.answers || [];
-            console.log('[renderResponsesTable] Response:', response.id, 'Answers:', answers.length);
 
             return `
                 <tr data-response-id="${response.id}">
@@ -1334,11 +1305,6 @@
                 </tr>
             `;
         }).join('');
-
-        console.log('[renderResponsesTable] Rendered:', {
-            theadHTML: thead.innerHTML.substring(0, 200),
-            tbodyRows: tbody.querySelectorAll('tr').length
-        });
     }
 
     /**
@@ -1640,67 +1606,6 @@
     }
 
     /**
-     * Duplicate a question
-     * @param {string} questionId - ID of the question to duplicate
-     */
-    function duplicateQuestion(questionId) {
-        const sections = getSections();
-        const questions = getQuestions();
-        let questionToDuplicate = null;
-        let isInSection = false;
-        let sectionIndex = -1;
-
-        // Try to find in sections first
-        for (let i = 0; i < sections.length; i++) {
-            if (sections[i].questions) {
-                const found = sections[i].questions.find(q => q.id === questionId);
-                if (found) {
-                    questionToDuplicate = found;
-                    isInSection = true;
-                    sectionIndex = i;
-                    break;
-                }
-            }
-        }
-
-        // If not found in sections, find in root questions
-        if (!questionToDuplicate) {
-            questionToDuplicate = questions.find(q => q.id === questionId);
-        }
-
-        if (questionToDuplicate) {
-            // Deep clone the question
-            const duplicatedQuestion = JSON.parse(JSON.stringify(questionToDuplicate));
-
-            // Generate new IDs
-            duplicatedQuestion.id = generateUUID();
-
-            // Generate new IDs for options if they exist
-            if (duplicatedQuestion.options && duplicatedQuestion.options.length > 0) {
-                duplicatedQuestion.options = duplicatedQuestion.options.map((opt, idx) => ({
-                    ...opt,
-                    id: generateUUID(),
-                    order: idx
-                }));
-            }
-
-            if (isInSection && sectionIndex > -1) {
-                // Add to section
-                duplicatedQuestion.order = sections[sectionIndex].questions.length;
-                sections[sectionIndex].questions.push(duplicatedQuestion);
-                saveSections(sections);
-            } else {
-                // Add to root
-                duplicatedQuestion.order = questions.length;
-                questions.push(duplicatedQuestion);
-                saveQuestions(questions);
-            }
-
-            renderQuestions();
-        }
-    }
-
-    /**
      * Update a question (from root or section)
      * @param {string} questionId - ID of the question to update
      * @param {Object} updates - Object with fields to update
@@ -1781,8 +1686,6 @@
 
             saveSections(newSections);
             renderQuestions();
-
-            console.log(`[Section Delete] Deleted section "${sections[sectionIndex].title}" and ${(sections[sectionIndex].questions || []).length} questions`);
         }
     }
 
@@ -1824,10 +1727,8 @@
      * Render all questions
      */
     function renderQuestions() {
-        console.log('[FormApp] renderQuestions called');
-
         if (!questionsList) {
-            console.error('[FormApp] questions-list element not found');
+            console.error('Questions list element not found');
             return;
         }
 
@@ -1835,14 +1736,11 @@
         const sections = getSections();
         const readOnly = isFormReadOnly();
 
-        console.log('[FormApp] Rendering', questions.length, 'questions,', sections.length, 'sections, readOnly:', readOnly);
-
         if (questions.length === 0 && sections.length === 0) {
             const emptyMessage = readOnly
                 ? '<div class="empty-state"><h2>질문이 없습니다</h2><p>이 게시된 설문에는 질문이 없습니다.</p></div>'
                 : '<div class="empty-state"><h2>질문을 추가하세요</h2><p>아래 버튼을 클릭하여 첫 번째 질문을 시작하세요.</p><button class="btn btn-primary add-first-question-btn">첫 질문 추가</button></div>';
             questionsList.innerHTML = emptyMessage;
-            console.log('[FormApp] Rendered empty state');
 
             // Attach event listener for first question button
             if (!readOnly) {
@@ -2328,14 +2226,6 @@
             });
         });
 
-        // Duplicate button handlers
-        document.querySelectorAll('.duplicate-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const questionId = e.currentTarget.dataset.questionId;
-                duplicateQuestion(questionId);
-            });
-        });
-
         // Add option button handlers
         document.querySelectorAll('.add-option-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -2497,8 +2387,6 @@
 
         saveQuestions(questions);
         renderQuestions();
-
-        console.log('[DragDrop] Reordered questions:', fromIndex, '->', toIndex);
     }
 
     /**
@@ -2534,8 +2422,6 @@
 
         saveSections(sections);
         renderQuestions();
-
-        console.log('[DragDrop] Reordered questions in section:', sectionId, fromIndex, '->', toIndex);
     }
 
     /**
@@ -2803,7 +2689,6 @@
             }
 
             renderQuestions();
-            console.log('[Attachment] Uploaded to server for question:', questionId);
         } catch (error) {
             console.error('Attachment upload failed:', error);
             alert('첨부파일 업로드에 실패했습니다: ' + error.message);
@@ -2912,7 +2797,6 @@
             }
 
             renderQuestions();
-            console.log('[Attachment] File stored locally for question:', questionId);
         } catch (error) {
             console.error('Failed to store attachment locally:', error);
             alert('첨부파일 저장에 실패했습니다.');
@@ -3001,7 +2885,6 @@
             }
 
             renderQuestions();
-            console.log('[Attachment] Pending attachment removed for question:', questionId);
             return;
         }
 
@@ -3042,7 +2925,6 @@
                 }
 
                 renderQuestions();
-                console.log('[Attachment] Server attachment deleted for question:', questionId);
             } catch (error) {
                 console.error('Attachment deletion failed:', error);
                 alert('첨부파일 삭제에 실패했습니다: ' + error.message);
@@ -3877,7 +3759,6 @@
         saveQuestions,
         addQuestion,
         deleteQuestion,
-        duplicateQuestion,
         updateQuestion,
         renderQuestions,
 
@@ -3933,7 +3814,6 @@
     };
 
     // Initialize when DOM is ready
-    console.log('[FormApp] Script loaded, readyState:', document.readyState);
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {

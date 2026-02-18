@@ -278,15 +278,11 @@
             }
 
             if (questionsWithPending.length === 0) {
-                console.log('[Publish] No pending attachments to upload');
                 return;
             }
 
-            console.log(`[Publish] Uploading ${questionsWithPending.length} pending attachment(s)...`);
-
             for (const question of questionsWithPending) {
                 if (!question.serverId) {
-                    console.warn('[Publish] Question has no serverId, skipping attachment:', question.id);
                     continue;
                 }
 
@@ -345,9 +341,8 @@
                         }
                     }
 
-                    console.log('[Publish] Uploaded attachment for question:', question.id);
                 } catch (error) {
-                    console.error('[Publish] Failed to upload attachment for question:', question.id, error);
+                    console.error('Failed to upload attachment for question:', question.id, error);
                 }
             }
 
@@ -396,8 +391,8 @@
                 if (q.type === 'linear-scale' && q.scaleConfig) {
                     config = q.scaleConfig;
                 }
-                // RADIO/CHECKBOX 타입: options 배열을 config.options로 변환
-                else if ((q.type === 'multiple-choice' || q.type === 'checkbox') && q.options && q.options.length > 0) {
+                // RADIO/CHECKBOX/DROPDOWN 타입: options 배열을 config.options로 변환
+                else if ((q.type === 'multiple-choice' || q.type === 'checkbox' || q.type === 'dropdown') && q.options && q.options.length > 0) {
                     config = {
                         options: q.options.map((opt, optIdx) => ({
                             id: opt.id || `opt_${optIdx}`,
@@ -406,7 +401,7 @@
                     };
                 }
 
-                return {
+                const result = {
                     type: q.type,
                     title: q.title,
                     description: q.description || '',
@@ -414,6 +409,7 @@
                     orderIndex: idx,
                     config: config,
                 };
+                return result;
             };
 
             return {
@@ -463,7 +459,7 @@
 
                 if (parsedConfig) {
                     if (parsedConfig.options) {
-                        // RADIO/CHECKBOX 타입
+                        // RADIO/CHECKBOX/DROPDOWN 타입
                         options = parsedConfig.options.map((opt, idx) => ({
                             id: opt.id || `opt_${idx}`,
                             label: opt.label,
