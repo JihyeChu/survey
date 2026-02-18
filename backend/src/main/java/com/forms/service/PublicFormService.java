@@ -26,7 +26,7 @@ public class PublicFormService {
 
     /**
      * 공개 폼 조회
-     * 응답자용으로 폼 제목, 설명, 질문 목록을 orderIndex 순서로 반환한다.
+     * 응답자용으로 폼 제목, 설명, 섹션과 질문 목록을 orderIndex 순서로 반환한다.
      *
      * @param formId 조회할 폼 ID
      * @return 응답자용 공개 폼 정보
@@ -36,11 +36,20 @@ public class PublicFormService {
         Form form = formRepository.findById(formId)
                 .orElseThrow(() -> new IllegalArgumentException("Form not found with id: " + formId));
 
+        // Lazy loading 강제 실행
+        // sections과 각 section의 questions를 로드
+        form.getSections().forEach(section -> {
+            section.getQuestions().size(); // Lazy load 트리거
+        });
+
+        // Form 레벨의 questions 로드
+        form.getQuestions().size(); // Lazy load 트리거
+
         // 공개 폼 응답 생성
         PublicFormResponse response = PublicFormResponse.fromEntity(form);
 
-        // orderIndex 순서로 질문 조회
-        List<PublicQuestionResponse> questions = questionRepository.findByFormIdOrderByOrderIndex(formId)
+        // Form 레벨의 section이 없는 질문들만 추가
+        List<PublicQuestionResponse> questions = questionRepository.findByFormIdAndSectionIsNullOrderByOrderIndex(formId)
                 .stream()
                 .map(PublicQuestionResponse::fromEntity)
                 .collect(Collectors.toList());
