@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -29,12 +30,14 @@ public class FormResponse {
     public static FormResponse fromEntity(Form form) {
         List<SectionResponse> sectionResponses = form.getSections() != null
                 ? form.getSections().stream()
+                    .sorted(Comparator.comparingInt(s -> s.getOrderIndex() != null ? s.getOrderIndex() : 0))
                     .map(SectionResponse::fromEntity)
                     .collect(Collectors.toList())
                 : new ArrayList<>();
 
         List<QuestionResponse> questionResponses = form.getQuestions() != null
                 ? form.getQuestions().stream()
+                    .sorted(Comparator.comparingInt(q -> q.getOrderIndex() != null ? q.getOrderIndex() : 0))
                     .map(QuestionResponse::fromEntity)
                     .collect(Collectors.toList())
                 : new ArrayList<>();

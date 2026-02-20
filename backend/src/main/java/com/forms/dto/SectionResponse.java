@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -25,6 +26,7 @@ public class SectionResponse {
     public static SectionResponse fromEntity(Section section) {
         List<QuestionResponse> questionResponses = section.getQuestions() != null
                 ? section.getQuestions().stream()
+                    .sorted(Comparator.comparingInt(q -> q.getOrderIndex() != null ? q.getOrderIndex() : 0))
                     .map(QuestionResponse::fromEntity)
                     .collect(Collectors.toList())
                 : new ArrayList<>();

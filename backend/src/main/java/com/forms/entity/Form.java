@@ -38,12 +38,12 @@ public class Form {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "form", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "form")
     @OrderBy("orderIndex ASC")
     @Builder.Default
     private List<Section> sections = new ArrayList<>();
 
-    @OneToMany(mappedBy = "form", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "form")
     @OrderBy("orderIndex ASC")
     @Builder.Default
     private List<Question> questions = new ArrayList<>();
