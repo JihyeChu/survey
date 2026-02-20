@@ -1199,6 +1199,19 @@ html, body {
     color: var(--text-secondary);
 }
 
+.scale-range-selectors {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.scale-range-separator {
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+}
+
 .scale-select {
     padding: 8px 12px;
     border: 1px solid var(--border-color);
