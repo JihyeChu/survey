@@ -3,9 +3,11 @@ package com.forms.service;
 import com.forms.dto.SectionRequest;
 import com.forms.dto.SectionResponse;
 import com.forms.entity.Form;
+import com.forms.entity.Question;
 import com.forms.entity.Section;
 import com.forms.repository.FormRepository;
 import com.forms.repository.SectionRepository;
+import com.forms.service.FileStorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,9 @@ class SectionServiceTest {
 
     @Mock
     private FormRepository formRepository;
+
+    @Mock
+    private FileStorageService fileStorageService;
 
     @InjectMocks
     private SectionService sectionService;
@@ -196,19 +201,58 @@ class SectionServiceTest {
     }
 
     @Test
-    @DisplayName("섹션 삭제 성공")
+    @DisplayName("섹션 삭제 성공 - 빈 질문 목록")
     void deleteSection_Success() {
-        given(sectionRepository.existsById(1L)).willReturn(true);
+        given(sectionRepository.findById(1L)).willReturn(Optional.of(section));
 
         sectionService.deleteSection(1L);
 
-        verify(sectionRepository).deleteById(1L);
+        verify(sectionRepository).delete(section);
+    }
+
+    @Test
+    @DisplayName("섹션 삭제 시 첨부파일 있는 질문 파일 정리 검증 (Cascade)")
+    void deleteSection_WithQuestionsHavingAttachments() throws Exception {
+        Question questionWithAttachment = Question.builder()
+                .id(10L)
+                .form(form)
+                .section(section)
+                .type("SHORT_TEXT")
+                .title("첨부파일 질문")
+                .required(false)
+                .orderIndex(0)
+                .attachmentFilename("doc.pdf")
+                .attachmentStoredName("stored-doc.pdf")
+                .attachmentContentType("application/pdf")
+                .build();
+
+        Question questionWithoutAttachment = Question.builder()
+                .id(11L)
+                .form(form)
+                .section(section)
+                .type("LONG_TEXT")
+                .title("일반 질문")
+                .required(false)
+                .orderIndex(1)
+                .build();
+
+        section.getQuestions().add(questionWithAttachment);
+        section.getQuestions().add(questionWithoutAttachment);
+
+        given(sectionRepository.findById(1L)).willReturn(Optional.of(section));
+
+        sectionService.deleteSection(1L);
+
+        // 첨부파일 있는 질문만 파일 정리
+        verify(fileStorageService).deleteFile("stored-doc.pdf");
+        // JPA cascade로 섹션 삭제 → 질문도 함께 삭제
+        verify(sectionRepository).delete(section);
     }
 
     @Test
     @DisplayName("존재하지 않는 섹션 삭제시 예외 발생")
     void deleteSection_NotFound() {
-        given(sectionRepository.existsById(999L)).willReturn(false);
+        given(sectionRepository.findById(999L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> sectionService.deleteSection(999L))
                 .isInstanceOf(IllegalArgumentException.class)

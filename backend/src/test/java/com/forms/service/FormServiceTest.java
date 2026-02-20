@@ -1,10 +1,15 @@
 package com.forms.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.forms.dto.FormRequest;
 import com.forms.dto.FormResponse;
 import com.forms.entity.Form;
+import com.forms.repository.FileMetadataRepository;
 import com.forms.repository.FormRepository;
 import com.forms.repository.QuestionRepository;
+import com.forms.repository.ResponseRepository;
+import com.forms.repository.SectionRepository;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,6 +27,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -33,6 +40,24 @@ class FormServiceTest {
 
     @Mock
     private QuestionRepository questionRepository;
+
+    @Mock
+    private SectionRepository sectionRepository;
+
+    @Mock
+    private ResponseRepository responseRepository;
+
+    @Mock
+    private FileMetadataRepository fileMetadataRepository;
+
+    @Mock
+    private ObjectMapper objectMapper;
+
+    @Mock
+    private EntityManager entityManager;
+
+    @Mock
+    private FileStorageService fileStorageService;
 
     @InjectMocks
     private FormService formService;
@@ -126,8 +151,8 @@ class FormServiceTest {
                 .updatedAt(LocalDateTime.now())
                 .build();
 
-        given(formRepository.findById(1L)).willReturn(Optional.of(form));
-        given(formRepository.save(any(Form.class))).willReturn(updatedForm);
+        given(formRepository.existsById(1L)).willReturn(true);
+        given(formRepository.findById(1L)).willReturn(Optional.of(updatedForm));
         given(questionRepository.findByFormIdAndSectionIsNullOrderByOrderIndex(1L)).willReturn(Collections.emptyList());
 
         FormResponse result = formService.updateForm(1L, updateRequest);
@@ -139,7 +164,7 @@ class FormServiceTest {
     @Test
     @DisplayName("존재하지 않는 폼 수정시 예외 발생")
     void updateForm_NotFound() {
-        given(formRepository.findById(999L)).willReturn(Optional.empty());
+        given(formRepository.existsById(999L)).willReturn(false);
 
         assertThatThrownBy(() -> formService.updateForm(999L, formRequest))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -150,6 +175,8 @@ class FormServiceTest {
     @DisplayName("폼 삭제 성공")
     void deleteForm_Success() {
         given(formRepository.existsById(1L)).willReturn(true);
+        given(questionRepository.findByFormIdWithAttachment(1L)).willReturn(Collections.emptyList());
+        given(responseRepository.findByFormId(1L)).willReturn(Collections.emptyList());
 
         formService.deleteForm(1L);
 
