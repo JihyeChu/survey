@@ -6,7 +6,7 @@
 (function() {
     'use strict';
 
-    const API_BASE_URL = 'http://localhost:8080/api';
+    const API_BASE_URL = '/api';
 
     /**
      * API 요청 헬퍼
@@ -28,7 +28,18 @@
                 throw new Error(error.message || `HTTP ${response.status}`);
             }
 
-            return await response.json();
+            // 204 No Content 또는 빈 응답 처리
+            if (response.status === 204 || response.headers.get('content-length') === '0') {
+                return null;
+            }
+
+            // Content-Type 확인 후 JSON 파싱
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return await response.json();
+            }
+
+            return null;
         } catch (error) {
             console.error(`API Error [${endpoint}]:`, error);
             throw error;
@@ -112,12 +123,13 @@
 
         /**
          * 질문 수정
+         * @param {string} formId - 폼 ID
          * @param {string} questionId - 질문 ID
          * @param {Object} questionData - 수정할 데이터
          * @returns {Promise<Object>} 수정된 질문
          */
-        async update(questionId, questionData) {
-            return request(`/questions/${questionId}`, {
+        async update(formId, questionId, questionData) {
+            return request(`/forms/${formId}/questions/${questionId}`, {
                 method: 'PUT',
                 body: JSON.stringify(questionData),
             });
@@ -125,11 +137,12 @@
 
         /**
          * 질문 삭제
+         * @param {string} formId - 폼 ID
          * @param {string} questionId - 질문 ID
          * @returns {Promise<Object>} 삭제 결과
          */
-        async delete(questionId) {
-            return request(`/questions/${questionId}`, {
+        async delete(formId, questionId) {
+            return request(`/forms/${formId}/questions/${questionId}`, {
                 method: 'DELETE',
             });
         },
@@ -190,8 +203,18 @@
 
             let result;
             if (form.publishedId) {
-                // 기존 게시된 폼 업데이트
-                result = await FormAPI.update(form.publishedId, formData);
+                try {
+                    // 기존 게시된 폼 업데이트
+                    result = await FormAPI.update(form.publishedId, formData);
+                } catch (error) {
+                    // 404 에러 시 새로 생성
+                    if (error.message.includes('404') || error.message.includes('not found')) {
+                        form.publishedId = null;
+                        result = await FormAPI.create(formData);
+                    } else {
+                        throw error;
+                    }
+                }
             } else {
                 // 새로 게시
                 result = await FormAPI.create(formData);

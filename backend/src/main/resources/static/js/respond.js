@@ -6,7 +6,7 @@
 (function() {
     'use strict';
 
-    const API_BASE_URL = 'http://localhost:8080/api';
+    const API_BASE_URL = '/api';
 
     // ========================================================
     // DOM ELEMENTS
@@ -103,7 +103,7 @@
 
     async function loadForm(formId) {
         try {
-            const response = await fetch(`${API_BASE_URL}/forms/${formId}`, {
+            const response = await fetch(`${API_BASE_URL}/forms/${formId}/public`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -295,7 +295,44 @@
         });
     }
 
+    // 현재 DOM에서 입력값을 즉시 읽어 responses에 저장 (이벤트 누락 방어)
+    function saveCurrentSectionValues() {
+        elements.questionsContainer.querySelectorAll('.respond-question-card').forEach(card => {
+            const questionId = card.dataset.questionId;
+            if (!questionId) return;
+
+            const textInput = card.querySelector('.respond-text-input');
+            if (textInput) { responses[questionId] = textInput.value; return; }
+
+            const textarea = card.querySelector('.respond-textarea-input');
+            if (textarea) { responses[questionId] = textarea.value; return; }
+
+            const checkedRadio = card.querySelector('input[type="radio"]:checked');
+            if (checkedRadio) { responses[questionId] = checkedRadio.value; return; }
+
+            const checkboxes = card.querySelectorAll('input[type="checkbox"]');
+            if (checkboxes.length > 0) {
+                responses[questionId] = Array.from(checkboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.value);
+                return;
+            }
+
+            const select = card.querySelector('.respond-select-input');
+            if (select) { responses[questionId] = select.value; return; }
+
+            const dateInput = card.querySelector('.respond-date-input');
+            if (dateInput) { responses[questionId] = dateInput.value; return; }
+
+            const selectedBtn = card.querySelector('.respond-scale-button.selected');
+            if (selectedBtn) { responses[questionId] = selectedBtn.value; }
+        });
+    }
+
     function goToNextSection() {
+        // 이동 전 현재 섹션 값 명시적 저장
+        saveCurrentSectionValues();
+
         // 현재 섹션 검증
         const section = formData.sections[currentSectionIndex];
         const sectionQuestions = section.questions || [];
@@ -316,6 +353,9 @@
     }
 
     function goToPreviousSection() {
+        // 이동 전 현재 섹션 값 명시적 저장
+        saveCurrentSectionValues();
+
         if (currentSectionIndex > 0) {
             currentSectionIndex--;
             renderCurrentSection();
@@ -389,8 +429,8 @@
 
         card.appendChild(header);
 
-        // 질문 첨부파일 표시 (attachment 필드 확인)
-        if (question.attachment || question.attachmentStoredName) {
+        // 질문 첨부파일 표시 (attachmentFilename 또는 attachmentStoredName 필드 확인)
+        if (question.attachmentFilename || question.attachmentStoredName) {
             const attachmentElement = createAttachmentElement(question);
             card.appendChild(attachmentElement);
         }
@@ -413,15 +453,16 @@
         const attachmentContainer = document.createElement('div');
         attachmentContainer.className = 'respond-question-attachment';
 
-        // attachment 또는 attachmentStoredName 중 하나 확인
-        const attachmentName = question.attachment || question.attachmentStoredName;
-        if (!attachmentName) {
+        // attachmentFilename 또는 attachmentStoredName 중 하나 확인
+        const attachmentFilename = question.attachmentFilename || question.attachmentStoredName;
+        if (!attachmentFilename) {
             return attachmentContainer;
         }
 
         const formId = getFormIdFromUrl();
         const fileUrl = `/api/forms/${formId}/questions/${question.id}/attachment`;
-        const fileExtension = getFileExtension(attachmentName);
+        // 원본 파일 이름에서 확장자 추출 (attachmentFilename 우선)
+        const fileExtension = getFileExtension(question.attachmentFilename || attachmentFilename);
         const isImage = isImageFile(fileExtension);
 
         if (isImage) {
@@ -433,12 +474,12 @@
             img.onerror = () => {
                 // 이미지 로드 실패 시 다운로드 링크로 폴백
                 attachmentContainer.innerHTML = '';
-                createDownloadLink(attachmentContainer, question, fileUrl, attachmentName);
+                createDownloadLink(attachmentContainer, question, fileUrl, attachmentFilename);
             };
             attachmentContainer.appendChild(img);
         } else {
             // 다른 파일: 다운로드 링크로 표시
-            createDownloadLink(attachmentContainer, question, fileUrl, attachmentName);
+            createDownloadLink(attachmentContainer, question, fileUrl, attachmentFilename);
         }
 
         return attachmentContainer;
@@ -527,6 +568,9 @@
         input.className = 'respond-text-input';
         input.name = `q_${questionId}`;
         input.placeholder = '응답 입력...';
+        if (responses[questionId]) {
+            input.value = responses[questionId];
+        }
         input.addEventListener('input', (e) => {
             responses[questionId] = e.target.value;
             updateProgress();
@@ -540,6 +584,9 @@
         textarea.className = 'respond-textarea-input';
         textarea.name = `q_${questionId}`;
         textarea.placeholder = '응답 입력...';
+        if (responses[questionId]) {
+            textarea.value = responses[questionId];
+        }
         textarea.addEventListener('input', (e) => {
             responses[questionId] = e.target.value;
             updateProgress();
@@ -624,6 +671,9 @@
             input.name = `q_${question.id}`;
             input.value = option.id;
             input.className = 'respond-option-input';
+            if (String(responses[question.id]) === String(option.id)) {
+                input.checked = true;
+            }
             input.addEventListener('change', (e) => {
                 if (e.target.checked) {
                     responses[question.id] = e.target.value;
@@ -658,6 +708,9 @@
             input.name = `q_${question.id}`;
             input.value = option.id;
             input.className = 'respond-option-input';
+            if (Array.isArray(responses[question.id]) && responses[question.id].map(String).includes(String(option.id))) {
+                input.checked = true;
+            }
             input.addEventListener('change', (e) => {
                 const checkboxes = document.querySelectorAll(`input[name="q_${question.id}"]:checked`);
                 responses[question.id] = Array.from(checkboxes).map(cb => cb.value);
@@ -700,6 +753,9 @@
             updateProgress();
             clearQuestionError(question.id);
         });
+        if (responses[question.id]) {
+            select.value = responses[question.id];
+        }
 
         container.appendChild(select);
     }
@@ -709,6 +765,9 @@
         input.type = 'date';
         input.className = 'respond-date-input';
         input.name = `q_${questionId}`;
+        if (responses[questionId]) {
+            input.value = responses[questionId];
+        }
         input.addEventListener('change', (e) => {
             responses[questionId] = e.target.value;
             updateProgress();
@@ -735,11 +794,14 @@
                 const config = typeof question.config === 'string'
                     ? JSON.parse(question.config)
                     : question.config;
-                fileConfig = {
-                    allowedExtensions: config.allowedExtensions || [],
-                    maxFileSize: config.maxFileSize || 10485760,
-                    allowMultiple: config.allowMultiple || false
-                };
+                // config가 null이 아닌 경우에만 값 추출
+                if (config && typeof config === 'object') {
+                    fileConfig = {
+                        allowedExtensions: config.allowedExtensions || [],
+                        maxFileSize: config.maxFileSize || 10485760,
+                        allowMultiple: config.allowMultiple || false
+                    };
+                }
             } catch (e) {
                 console.warn('Failed to parse file config:', e);
             }
@@ -814,6 +876,26 @@
             clearQuestionError(questionId);
         });
 
+        // 이전에 선택한 파일 목록 복원 표시 (input 값은 보안상 복원 불가)
+        const savedFiles = responses[questionId] && responses[questionId].files;
+        if (savedFiles && savedFiles.length > 0) {
+            const ul = document.createElement('ul');
+            savedFiles.forEach((file) => {
+                const li = document.createElement('li');
+                li.className = 'respond-file-item';
+                const fileName = document.createElement('span');
+                fileName.className = 'respond-file-name';
+                fileName.textContent = file.name;
+                li.appendChild(fileName);
+                const fileSize = document.createElement('span');
+                fileSize.className = 'respond-file-size';
+                fileSize.textContent = formatFileSize(file.size);
+                li.appendChild(fileSize);
+                ul.appendChild(li);
+            });
+            fileList.appendChild(ul);
+        }
+
         inputWrapper.appendChild(label);
         inputWrapper.appendChild(input);
         inputWrapper.appendChild(fileList);
@@ -821,43 +903,24 @@
     }
 
     function createLinearScale(question, container) {
-        // 선형배율은 항상 1~10 고정
-        const min = 1;
-        const max = 10;
-
-        // scaleConfig에서 레이블 추출
+        // scaleConfig에서 min/max 값 추출 (기본값: 1~5)
         const scaleConfig = getScaleConfigFromQuestion(question);
-        const minLabelText = scaleConfig.minLabel || '';
-        const maxLabelText = scaleConfig.maxLabel || '';
+        const min = scaleConfig.min !== undefined ? scaleConfig.min : 1;
+        const max = scaleConfig.max !== undefined ? scaleConfig.max : 5;
 
         const optionsDiv = document.createElement('div');
         optionsDiv.className = 'respond-scale-options';
 
-        // 레이블 (min/max 값이 있을 때만 표시)
-        if (minLabelText || maxLabelText) {
-            const labelDiv = document.createElement('div');
-            labelDiv.className = 'respond-scale-label';
-
-            const minLabel = document.createElement('span');
-            minLabel.className = 'respond-scale-min';
-            minLabel.textContent = minLabelText;
-
-            const maxLabel = document.createElement('span');
-            maxLabel.className = 'respond-scale-max';
-            maxLabel.textContent = maxLabelText;
-
-            labelDiv.appendChild(minLabel);
-            labelDiv.appendChild(maxLabel);
-            optionsDiv.appendChild(labelDiv);
-        }
-
-        // 버튼 (1부터 10까지 고정 렌더링)
+        // 버튼 (설정된 min부터 max까지 렌더링)
         for (let i = min; i <= max; i++) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'respond-scale-button';
             button.textContent = String(i);
             button.value = String(i);
+            if (responses[question.id] === String(i)) {
+                button.classList.add('selected');
+            }
             button.addEventListener('click', (e) => {
                 e.preventDefault();
                 // 이전 선택 제거
@@ -922,20 +985,21 @@
             await uploadFiles(formId);
 
             // 응답 생성 (파일 메타데이터 포함)
+            // questionId: dataset은 항상 string → parseInt로 Long 타입 보장
             const answers = Object.entries(responses).map(([questionId, value]) => ({
-                questionId,
+                questionId: parseInt(questionId, 10),
                 value: typeof value === 'object' && value.files
                     ? value.uploadedMetadata || []
                     : value
             }));
 
-            // 이메일이 설정되어 있으면 추가
+            // 이메일이 설정되어 있으면 추가 (백엔드 ResponseRequest.email 필드명과 일치)
             const submitData = {
                 answers
             };
 
             if (formData.settings && formData.settings.collectEmail && respondentEmail) {
-                submitData.respondentEmail = respondentEmail;
+                submitData.email = respondentEmail;
             }
 
             await submitResponses(formId, submitData);
