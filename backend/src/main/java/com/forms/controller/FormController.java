@@ -6,6 +6,7 @@ import com.forms.dto.FormRequest;
 import com.forms.dto.FormResponse;
 import com.forms.dto.QuestionRequest;
 import com.forms.dto.QuestionResponse;
+import com.forms.dto.ReorderQuestionsRequest;
 import com.forms.service.FormService;
 import com.forms.service.QuestionService;
 import lombok.RequiredArgsConstructor;
@@ -153,6 +154,21 @@ public class FormController {
         } catch (IOException e) {
             log.error("Failed to delete attachment for questionId: {}", questionId, e);
             throw new RuntimeException("Attachment deletion failed: " + e.getMessage(), e);
+        }
+    }
+
+    @PutMapping("/{formId}/questions/reorder")
+    public ResponseEntity<Void> reorderQuestions(
+            @PathVariable Long formId,
+            @RequestBody ReorderQuestionsRequest request) {
+        log.info("Received question reorder request for formId: {}", formId);
+        try {
+            questionService.reorderQuestions(request);
+            log.info("Questions reordered successfully for formId: {}", formId);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            log.error("Failed to reorder questions for formId: {}", formId, e);
+            throw new RuntimeException("Failed to reorder questions: " + e.getMessage(), e);
         }
     }
 

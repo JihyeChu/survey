@@ -3,10 +3,13 @@ package com.forms.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.forms.dto.QuestionRequest;
 import com.forms.dto.QuestionResponse;
+import com.forms.dto.ReorderQuestionsRequest;
 import com.forms.entity.Form;
 import com.forms.entity.Question;
+import com.forms.entity.Section;
 import com.forms.repository.FormRepository;
 import com.forms.repository.QuestionRepository;
+import com.forms.repository.SectionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -14,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -23,6 +27,7 @@ public class QuestionService {
 
     private final QuestionRepository questionRepository;
     private final FormRepository formRepository;
+    private final SectionRepository sectionRepository;
     private final ObjectMapper objectMapper;
     private final FileStorageService fileStorageService;
 
@@ -89,7 +94,24 @@ public class QuestionService {
             }
         }
 
+        // Get the form ID and order index before deletion
+        Long formId = question.getForm().getId();
+        Long sectionId = question.getSection() != null ? question.getSection().getId() : null;
+        Integer deletedOrder = question.getOrderIndex();
+
+        // Delete the question
         questionRepository.deleteById(id);
+
+        // Reorder remaining questions: decrement orderIndex for all questions with orderIndex > deletedOrder
+        if (sectionId != null) {
+            // Question was in a section
+            log.debug("Reordering questions in section {} after deleting question with order {}", sectionId, deletedOrder);
+            questionRepository.decrementOrderIndexAfterDeleteInSection(sectionId, deletedOrder);
+        } else {
+            // Question was at root level
+            log.debug("Reordering questions in form {} after deleting question with order {}", formId, deletedOrder);
+            questionRepository.decrementOrderIndexAfterDelete(formId, deletedOrder);
+        }
     }
 
     public QuestionResponse uploadAttachment(Long questionId, MultipartFile file) throws IOException {
@@ -160,5 +182,60 @@ public class QuestionService {
         log.info("Attachment downloaded successfully for question: {}", questionId);
 
         return fileContent;
+    }
+
+    public void reorderQuestions(ReorderQuestionsRequest request) {
+        if (request.getQuestions() == null || request.getQuestions().isEmpty()) {
+            log.warn("Empty questions list in reorder request");
+            return;
+        }
+
+        log.info("Reordering {} questions", request.getQuestions().size());
+
+        // 단일 SELECT로 모든 대상 질문을 한 번에 조회 (N+1 → 1 SELECT)
+        List<Long> ids = request.getQuestions().stream()
+                .map(ReorderQuestionsRequest.QuestionOrder::getId)
+                .collect(java.util.stream.Collectors.toList());
+
+        List<Question> questions = questionRepository.findAllById(ids);
+        java.util.Map<Long, Question> questionMap = questions.stream()
+                .collect(java.util.stream.Collectors.toMap(Question::getId, q -> q));
+
+        // 필요한 섹션 ID 수집 후 한 번에 조회
+        List<Long> sectionIds = request.getQuestions().stream()
+                .map(ReorderQuestionsRequest.QuestionOrder::getSectionId)
+                .filter(sid -> sid != null)
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+
+        java.util.Map<Long, Section> sectionMap = sectionIds.isEmpty()
+                ? java.util.Collections.emptyMap()
+                : sectionRepository.findAllById(sectionIds).stream()
+                        .collect(java.util.stream.Collectors.toMap(Section::getId, s -> s));
+
+        // 메모리에서 업데이트 후 saveAll로 배치 저장 (N UPDATE → 배치 처리)
+        for (ReorderQuestionsRequest.QuestionOrder qOrder : request.getQuestions()) {
+            Question question = questionMap.get(qOrder.getId());
+            if (question == null) {
+                throw new IllegalArgumentException("Question not found with id: " + qOrder.getId());
+            }
+
+            log.debug("Reordering question {} : {} → {}", question.getId(), question.getOrderIndex(), qOrder.getOrder());
+            question.setOrderIndex(qOrder.getOrder());
+
+            if (qOrder.getSectionId() != null) {
+                Section section = sectionMap.get(qOrder.getSectionId());
+                if (section == null) {
+                    throw new IllegalArgumentException("Section not found with id: " + qOrder.getSectionId());
+                }
+                question.setSection(section);
+            } else {
+                // 섹션에서 루트 레벨로 이동 시 section 해제
+                question.setSection(null);
+            }
+        }
+
+        questionRepository.saveAll(questions);
+        log.info("Questions reordered successfully");
     }
 }
