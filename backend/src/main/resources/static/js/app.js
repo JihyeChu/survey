@@ -162,11 +162,11 @@
             ];
         }
 
-        // Add linear scale config (fixed to 1-10)
+        // Add linear scale config (default 1-5)
         if (type === 'linear-scale') {
             question.scaleConfig = {
                 min: 1,
-                max: 10,
+                max: 5,
                 minLabel: '',
                 maxLabel: ''
             };
@@ -1410,8 +1410,7 @@
         const settingsMap = {
             'setting-collect-email': 'collectEmail',
             'setting-allow-edit': 'allowResponseEdit',
-            'setting-show-progress': 'showProgressBar',
-            'setting-shuffle-questions': 'shuffleQuestions'
+            'setting-show-progress': 'showProgressBar'
         };
 
         Object.entries(settingsMap).forEach(([elementId, settingKey]) => {
@@ -1448,8 +1447,7 @@
         const settingsMap = {
             'setting-collect-email': 'collectEmail',
             'setting-allow-edit': 'allowResponseEdit',
-            'setting-show-progress': 'showProgressBar',
-            'setting-shuffle-questions': 'shuffleQuestions'
+            'setting-show-progress': 'showProgressBar'
         };
 
         Object.entries(settingsMap).forEach(([elementId, settingKey]) => {
@@ -1583,9 +1581,14 @@
         // Try to find in sections first
         for (let section of sections) {
             if (section.questions) {
-                const index = section.questions.findIndex(q => q.id === questionId);
+                const index = section.questions.findIndex(q => String(q.id) === String(questionId));
                 if (index > -1) {
                     section.questions.splice(index, 1);
+                    // Reorder section questions: update order for all questions after the deleted one
+                    section.questions.forEach((q, idx) => {
+                        q.order = idx;
+                        q.orderIndex = idx;
+                    });
                     saveSections(sections);
                     found = true;
                     break;
@@ -1595,9 +1598,10 @@
 
         // If not found in sections, delete from root questions
         if (!found) {
-            const filtered = questions.filter(q => q.id !== questionId);
+            const filtered = questions.filter(q => String(q.id) !== String(questionId));
             filtered.forEach((q, idx) => {
                 q.order = idx;
+                q.orderIndex = idx;
             });
             saveQuestions(filtered);
         }
@@ -1619,7 +1623,7 @@
         // Try to find in sections first
         for (let section of sections) {
             if (section.questions) {
-                question = section.questions.find(q => q.id === questionId);
+                question = section.questions.find(q => String(q.id) === String(questionId));
                 if (question) {
                     isInSection = true;
                     break;
@@ -1629,7 +1633,7 @@
 
         // If not found in sections, find in root questions
         if (!question) {
-            question = questions.find(q => q.id === questionId);
+            question = questions.find(q => String(q.id) === String(questionId));
         }
 
         if (question) {
@@ -1739,14 +1743,14 @@
         if (questions.length === 0 && sections.length === 0) {
             const emptyMessage = readOnly
                 ? '<div class="empty-state"><h2>질문이 없습니다</h2><p>이 게시된 설문에는 질문이 없습니다.</p></div>'
-                : '<div class="empty-state"><h2>질문을 추가하세요</h2><p>아래 버튼을 클릭하여 첫 번째 질문을 시작하세요.</p><button class="btn btn-primary add-first-question-btn">첫 질문 추가</button></div>';
+                : '<div class="empty-state"><h2>섹션을 추가하세요</h2><p>섹션을 추가하고 그 안에 질문을 만드세요.</p><button class="btn btn-primary add-first-section-btn">첫 섹션 추가</button></div>';
             questionsList.innerHTML = emptyMessage;
 
-            // Attach event listener for first question button
+            // Attach event listener for first section button
             if (!readOnly) {
-                const firstQBtn = questionsList.querySelector('.add-first-question-btn');
-                if (firstQBtn) {
-                    firstQBtn.addEventListener('click', () => addQuestion());
+                const firstSectionBtn = questionsList.querySelector('.add-first-section-btn');
+                if (firstSectionBtn) {
+                    firstSectionBtn.addEventListener('click', () => addSection());
                 }
             }
             return;
@@ -1788,7 +1792,7 @@
 
                         <div class="section-questions">
                             ${sectionQuestions.length > 0 ? sectionQuestions.map((question, qIndex) => `
-                                <div class="question-card" data-question-id="${question.id}" data-section-id="${section.id}" draggable="true">
+                                <div class="question-card" data-question-id="${question.id}" data-section-id="${section.id}" data-index="${qIndex}" draggable="true">
                                     <div class="question-card-header">
                                         <div class="question-number">${qIndex + 1}</div>
                                         <div class="question-card-content">
@@ -1952,7 +1956,7 @@
 
         questionsList.innerHTML = html;
 
-        // Add buttons at the bottom
+        // Add section button at the bottom
         if (!readOnly) {
             questionsList.innerHTML += `
                 <div class="add-section-container">
@@ -1963,38 +1967,17 @@
                         섹션 추가
                     </button>
                 </div>
-                <div class="add-question-container">
-                    <button class="btn btn-add-question-full" id="add-question-bottom-btn">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-                        </svg>
-                        질문 추가
-                    </button>
-                </div>
             `;
         }
 
         // Attach event listeners
         attachQuestionEventListeners();
         attachSectionEventListeners();
-        attachAddQuestionButtonListener();
         attachAddSectionButtonListener();
 
         // Update read-only state if needed
         if (readOnly) {
             disableEditingUI();
-        }
-    }
-
-    /**
-     * Attach event listener for the bottom "Add Question" button
-     */
-    function attachAddQuestionButtonListener() {
-        const addBtn = document.getElementById('add-question-bottom-btn');
-        if (addBtn) {
-            addBtn.addEventListener('click', () => {
-                addQuestion();
-            });
         }
     }
 
@@ -2018,9 +2001,7 @@
         document.querySelectorAll('.delete-section-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const sectionId = e.currentTarget.dataset.sectionId;
-                if (confirm('이 섹션을 삭제하시겠습니까? 섹션의 질문들은 유지됩니다.')) {
-                    deleteSection(sectionId);
-                }
+                deleteSection(sectionId);
             });
         });
 
@@ -2148,31 +2129,25 @@
             `;
         }
 
-        // Linear scale configuration (fixed 1-10 scale with optional labels)
+        // Linear scale configuration (configurable min/max)
         if (type === 'linear-scale') {
-            const config = question.scaleConfig || { min: 1, max: 10, minLabel: '', maxLabel: '' };
+            const config = question.scaleConfig || { min: 1, max: 5 };
+            const minOptions = [0, 1];
+            const maxOptions = [2, 3, 4, 5, 6, 7, 8, 9, 10];
             return `
                 <div class="scale-config" data-question-id="${question.id}">
-                    <div class="scale-info">
-                        <span class="scale-range-label">배율: 1 ~ 10</span>
-                    </div>
-                    <div class="scale-labels">
-                        <input
-                            type="text"
-                            class="scale-label-input"
-                            placeholder="최소값 라벨 (선택)"
-                            value="${escapeHtml(config.minLabel || '')}"
-                            data-field="scaleMinLabel"
-                            data-question-id="${question.id}"
-                        />
-                        <input
-                            type="text"
-                            class="scale-label-input"
-                            placeholder="최대값 라벨 (선택)"
-                            value="${escapeHtml(config.maxLabel || '')}"
-                            data-field="scaleMaxLabel"
-                            data-question-id="${question.id}"
-                        />
+                    <div class="scale-range-selectors">
+                        <select class="scale-select" data-field="scaleMin" data-question-id="${question.id}">
+                            ${minOptions.map(val => `
+                                <option value="${val}" ${config.min === val ? 'selected' : ''}>${val}</option>
+                            `).join('')}
+                        </select>
+                        <span class="scale-range-separator">~</span>
+                        <select class="scale-select" data-field="scaleMax" data-question-id="${question.id}">
+                            ${maxOptions.map(val => `
+                                <option value="${val}" ${config.max === val ? 'selected' : ''}>${val}</option>
+                            `).join('')}
+                        </select>
                     </div>
                 </div>
             `;
@@ -2348,16 +2323,19 @@
                     handleFileDropOnQuestion(questionId, e.dataTransfer.files);
                 } else if (draggedElement && card !== draggedElement) {
                     // Question reordering
-                    const draggedSectionId = draggedElement.dataset.sectionId;
-                    const targetSectionId = card.dataset.sectionId;
+                    const draggedSectionId = draggedElement.dataset.sectionId || null;
+                    const targetSectionId = card.dataset.sectionId || null;
                     const targetIndex = parseInt(card.dataset.index);
 
                     if (draggedSectionId === targetSectionId && draggedSectionId) {
                         // Reordering within same section
                         reorderQuestionsInSection(draggedSectionId, draggedIndex, targetIndex);
-                    } else {
-                        // Reordering in root questions or cross-section (use only root)
+                    } else if (!draggedSectionId && !targetSectionId) {
+                        // Reordering within root questions
                         reorderQuestions(draggedIndex, targetIndex);
+                    } else {
+                        // Cross-section: move question between sections or between section and root
+                        moveQuestionBetweenSections(draggedSectionId, targetSectionId, draggedIndex, targetIndex);
                     }
                 }
             });
@@ -2425,6 +2403,72 @@
     }
 
     /**
+     * Move a question from one section (or root) to another section (or root)
+     * @param {string|null} fromSectionId - Source section ID, null if root
+     * @param {string|null} toSectionId - Target section ID, null if root
+     * @param {number} fromIndex - Source index within source list
+     * @param {number} toIndex - Target index within target list
+     */
+    function moveQuestionBetweenSections(fromSectionId, toSectionId, fromIndex, toIndex) {
+        const form = getForm();
+        const sections = form.sections || [];
+        const rootQuestions = form.questions || [];
+
+        // Get source list
+        let sourceList;
+        if (fromSectionId) {
+            const fromSection = sections.find(s => String(s.id) === String(fromSectionId));
+            if (!fromSection) return;
+            sourceList = fromSection.questions || [];
+        } else {
+            sourceList = rootQuestions;
+        }
+
+        if (fromIndex < 0 || fromIndex >= sourceList.length) return;
+
+        // Remove from source
+        const [movedQuestion] = sourceList.splice(fromIndex, 1);
+
+        // Update sectionId on the question
+        movedQuestion.sectionId = toSectionId || null;
+
+        // Get target list and insert
+        let targetList;
+        if (toSectionId) {
+            const toSection = sections.find(s => String(s.id) === String(toSectionId));
+            if (!toSection) {
+                // Rollback
+                sourceList.splice(fromIndex, 0, movedQuestion);
+                return;
+            }
+            targetList = toSection.questions || [];
+            toSection.questions = targetList;
+        } else {
+            targetList = rootQuestions;
+            form.questions = targetList;
+        }
+
+        const insertAt = isNaN(toIndex) ? targetList.length : Math.min(toIndex, targetList.length);
+        targetList.splice(insertAt, 0, movedQuestion);
+
+        // Reindex source list
+        sourceList.forEach((q, idx) => {
+            q.order = idx;
+            q.orderIndex = idx;
+        });
+
+        // Reindex target list
+        targetList.forEach((q, idx) => {
+            q.order = idx;
+            q.orderIndex = idx;
+        });
+
+        form.sections = sections;
+        saveForm(form);
+        renderQuestions();
+    }
+
+    /**
      * Debounce utility function
      * @param {Function} func - Function to debounce
      * @param {number} wait - Wait time in ms
@@ -2459,7 +2503,7 @@
         // Try to find in sections first
         for (let section of sections) {
             if (section.questions) {
-                question = section.questions.find(q => q.id === questionId);
+                question = section.questions.find(q => String(q.id) === String(questionId));
                 if (question) {
                     isInSection = true;
                     break;
@@ -2469,11 +2513,11 @@
 
         // If not found in sections, find in root questions
         if (!question) {
-            question = questions.find(q => q.id === questionId);
+            question = questions.find(q => String(q.id) === String(questionId));
         }
 
         if (question && question.options) {
-            const option = question.options.find(o => o.id === optionId);
+            const option = question.options.find(o => String(o.id) === String(optionId));
             if (option) {
                 option.label = value;
                 if (isInSection) {
@@ -2498,7 +2542,7 @@
         // Try to find in sections first
         for (let section of sections) {
             if (section.questions) {
-                question = section.questions.find(q => q.id === questionId);
+                question = section.questions.find(q => String(q.id) === String(questionId));
                 if (question) {
                     isInSection = true;
                     break;
@@ -2508,7 +2552,7 @@
 
         // If not found in sections, find in root questions
         if (!question) {
-            question = questions.find(q => q.id === questionId);
+            question = questions.find(q => String(q.id) === String(questionId));
         }
 
         if (question) {
@@ -2550,7 +2594,7 @@
         // Try to find in sections first
         for (let section of sections) {
             if (section.questions) {
-                question = section.questions.find(q => q.id === questionId);
+                question = section.questions.find(q => String(q.id) === String(questionId));
                 if (question) {
                     isInSection = true;
                     break;
@@ -2560,7 +2604,7 @@
 
         // If not found in sections, find in root questions
         if (!question) {
-            question = questions.find(q => q.id === questionId);
+            question = questions.find(q => String(q.id) === String(questionId));
         }
 
         if (question && question.options) {
@@ -2569,7 +2613,7 @@
                 alert('최소 1개의 옵션이 필요합니다.');
                 return;
             }
-            question.options = question.options.filter(o => o.id !== optionId);
+            question.options = question.options.filter(o => String(o.id) !== String(optionId));
             // Reorder remaining options
             question.options.forEach((opt, idx) => {
                 opt.order = idx;
@@ -3002,7 +3046,7 @@
         // Try to find in sections first
         for (let section of sections) {
             if (section.questions) {
-                question = section.questions.find(q => q.id === questionId);
+                question = section.questions.find(q => String(q.id) === String(questionId));
                 if (question) {
                     isInSection = true;
                     break;
@@ -3012,7 +3056,7 @@
 
         // If not found in sections, find in root questions
         if (!question) {
-            question = questions.find(q => q.id === questionId);
+            question = questions.find(q => String(q.id) === String(questionId));
         }
 
         if (question) {
@@ -3057,7 +3101,7 @@
         // Try to find in sections first
         for (let section of sections) {
             if (section.questions) {
-                question = section.questions.find(q => q.id === questionId);
+                question = section.questions.find(q => String(q.id) === String(questionId));
                 if (question) {
                     isInSection = true;
                     break;
@@ -3067,7 +3111,7 @@
 
         // If not found in sections, find in root questions
         if (!question) {
-            question = questions.find(q => q.id === questionId);
+            question = questions.find(q => String(q.id) === String(questionId));
         }
 
         if (question) {
@@ -3079,9 +3123,9 @@
                 question.options = [createDefaultOption(0)];
             }
 
-            // If changing to linear scale, ensure scaleConfig exists (fixed 1-10)
+            // If changing to linear scale, ensure scaleConfig exists (default 1-5)
             if (newType === 'linear-scale' && !question.scaleConfig) {
-                question.scaleConfig = { min: 1, max: 10, minLabel: '', maxLabel: '' };
+                question.scaleConfig = { min: 1, max: 5, minLabel: '', maxLabel: '' };
             }
 
             if (isInSection) {
@@ -3466,17 +3510,15 @@
                 return '';
 
             case 'linear-scale':
-                // Fixed 1-10 scale
+                // Configurable min/max scale
                 const scaleItems = [];
-                for (let i = 1; i <= 10; i++) {
+                const minVal = scaleConfig.min || 1;
+                const maxVal = scaleConfig.max || 5;
+                for (let i = minVal; i <= maxVal; i++) {
                     scaleItems.push(i);
                 }
                 return `
                     <div class="preview-scale">
-                        <div class="scale-labels-row">
-                            <span class="scale-label-text">${escapeHtml(scaleConfig.minLabel || '')}</span>
-                            <span class="scale-label-text">${escapeHtml(scaleConfig.maxLabel || '')}</span>
-                        </div>
                         <div class="scale-items">
                             ${scaleItems.map(num => `
                                 <label class="scale-item">
@@ -3544,6 +3586,10 @@
             const currentState = getState();
             const newState = deepMerge(currentState, updates);
             newState.form.updatedAt = new Date().toISOString();
+
+            // pendingAttachment base64Data는 유지 (업로드 전까지 필요)
+            // QuotaExceededError 발생 시에만 제거 시도
+
             localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
 
             // Mark as draft if form was modified after publishing
@@ -3551,7 +3597,46 @@
                 setSyncStatus('draft', '수정됨');
             }
         } catch (error) {
-            console.error('Failed to save state:', error);
+            if (error.name === 'QuotaExceededError') {
+                // localStorage 용량 초과 시 base64Data 제거 후 재시도
+                try {
+                    const currentState = getState();
+                    const newState = deepMerge(currentState, updates);
+                    newState.form.updatedAt = new Date().toISOString();
+
+                    // pendingAttachment의 base64Data만 제거
+                    if (newState.form.questions) {
+                        newState.form.questions = newState.form.questions.map(q => {
+                            if (q.pendingAttachment && q.pendingAttachment.base64Data) {
+                                return { ...q, pendingAttachment: { ...q.pendingAttachment, base64Data: null } };
+                            }
+                            return q;
+                        });
+                    }
+                    if (newState.form.sections) {
+                        newState.form.sections = newState.form.sections.map(s => ({
+                            ...s,
+                            questions: (s.questions || []).map(q => {
+                                if (q.pendingAttachment && q.pendingAttachment.base64Data) {
+                                    return { ...q, pendingAttachment: { ...q.pendingAttachment, base64Data: null } };
+                                }
+                                return q;
+                            })
+                        }));
+                    }
+
+                    // draft forms도 정리
+                    localStorage.removeItem('formAppDrafts');
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+
+                    alert('저장 공간이 부족하여 첨부파일 미리보기가 제거되었습니다. 게시 후 다시 첨부해주세요.');
+                } catch (e) {
+                    console.error('Failed to save state after cleanup:', e);
+                    alert('저장 공간이 부족합니다. 브라우저 개발자 도구에서 localStorage를 정리해주세요.');
+                }
+            } else {
+                console.error('Failed to save state:', error);
+            }
         }
     }
 
@@ -3573,6 +3658,21 @@
             }
         }
         return output;
+    }
+
+    /**
+     * Clear all localStorage data for the app
+     * Use when quota exceeded or data corruption occurs
+     */
+    function clearStorage() {
+        try {
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem('formAppDrafts');
+            alert('저장소가 초기화되었습니다. 페이지를 새로고침합니다.');
+            window.location.reload();
+        } catch (e) {
+            console.error('Failed to clear storage:', e);
+        }
     }
 
     /**
@@ -3795,6 +3895,7 @@
         isFormReadOnly,
         createDraftCopyForEdit,
         openFormListModal,
+        clearStorage,
         closeFormListModal,
 
         // Draft Forms Storage
