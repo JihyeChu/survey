@@ -7,12 +7,15 @@ import com.forms.entity.Section;
 import com.forms.repository.FormRepository;
 import com.forms.repository.SectionRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -20,6 +23,7 @@ public class SectionService {
 
     private final SectionRepository sectionRepository;
     private final FormRepository formRepository;
+    private final FileStorageService fileStorageService;
 
     public SectionResponse createSection(Long formId, SectionRequest request) {
         Form form = formRepository.findById(formId)
@@ -70,10 +74,25 @@ public class SectionService {
     }
 
     public void deleteSection(Long sectionId) {
-        if (!sectionRepository.existsById(sectionId)) {
-            throw new IllegalArgumentException("Section not found with id: " + sectionId);
+        Section section = sectionRepository.findById(sectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Section not found with id: " + sectionId));
+
+        // 섹션 내 질문의 첨부파일 디스크에서 삭제
+        if (section.getQuestions() != null) {
+            section.getQuestions().forEach(question -> {
+                if (question.getAttachmentStoredName() != null) {
+                    try {
+                        fileStorageService.deleteFile(question.getAttachmentStoredName());
+                    } catch (IOException e) {
+                        log.warn("Failed to delete attachment for question {} in section {}: {}",
+                                question.getId(), sectionId, e.getMessage());
+                    }
+                }
+            });
         }
-        sectionRepository.deleteById(sectionId);
+
+        // JPA cascade (CascadeType.ALL + orphanRemoval)로 question도 DB에서 함께 삭제
+        sectionRepository.delete(section);
     }
 
 }

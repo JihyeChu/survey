@@ -1,5 +1,6 @@
 package com.forms.dto;
 
+import com.fasterxml.jackson.annotation.JsonRawValue;
 import com.forms.entity.Form;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -7,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -26,18 +28,30 @@ public class PublicFormResponse {
     private List<PublicSectionResponse> sections;
     private List<PublicQuestionResponse> questions;
 
+    /**
+     * @JsonRawValue: DB의 JSON 문자열을 JSON 객체로 직렬화
+     * 프론트에서 formData.settings.collectEmail 등으로 바로 접근 가능
+     */
+    @JsonRawValue
+    private String settings;
+
     public static PublicFormResponse fromEntity(Form form) {
         List<PublicSectionResponse> sectionResponses = form.getSections() != null
                 ? form.getSections().stream()
+                    .sorted(Comparator.comparingInt(s -> s.getOrderIndex() != null ? s.getOrderIndex() : 0))
                     .map(PublicSectionResponse::fromEntity)
                     .collect(Collectors.toList())
                 : new ArrayList<>();
 
         List<PublicQuestionResponse> questionResponses = form.getQuestions() != null
                 ? form.getQuestions().stream()
+                    .sorted(Comparator.comparingInt(q -> q.getOrderIndex() != null ? q.getOrderIndex() : 0))
                     .map(PublicQuestionResponse::fromEntity)
                     .collect(Collectors.toList())
                 : new ArrayList<>();
+
+        // settings가 null이면 빈 객체 {} 반환 (프론트에서 settings.collectEmail 등 접근 안전)
+        String settings = form.getSettings() != null ? form.getSettings() : "{}";
 
         return PublicFormResponse.builder()
                 .id(form.getId())
@@ -45,6 +59,7 @@ public class PublicFormResponse {
                 .description(form.getDescription())
                 .sections(sectionResponses)
                 .questions(questionResponses)
+                .settings(settings)
                 .build();
     }
 }

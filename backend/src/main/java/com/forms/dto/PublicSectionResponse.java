@@ -29,6 +29,7 @@ public class PublicSectionResponse {
     public static PublicSectionResponse fromEntity(Section section) {
         List<PublicQuestionResponse> questionResponses = section.getQuestions() != null
                 ? section.getQuestions().stream()
+                    .sorted((q1, q2) -> Integer.compare(q1.getOrderIndex(), q2.getOrderIndex()))
                     .map(PublicQuestionResponse::fromEntity)
                     .collect(Collectors.toList())
                 : new ArrayList<>();
