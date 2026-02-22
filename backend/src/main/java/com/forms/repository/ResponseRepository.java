@@ -14,10 +14,11 @@ import java.util.List;
 public interface ResponseRepository extends JpaRepository<Response, Long> {
     List<Response> findByForm(Form form);
 
-    @Query("SELECT DISTINCT r FROM Response r LEFT JOIN FETCH r.answers LEFT JOIN FETCH r.files WHERE r.form = :form")
+    // files는 별도로 lazy loading (MultipleBagFetchException 방지: 두 List 동시 JOIN FETCH 불가)
+    @Query("SELECT DISTINCT r FROM Response r LEFT JOIN FETCH r.answers WHERE r.form = :form")
     List<Response> findByFormWithAnswers(@Param("form") Form form);
 
-    @Query("SELECT DISTINCT r FROM Response r LEFT JOIN FETCH r.answers LEFT JOIN FETCH r.files WHERE r.id = :id")
+    @Query("SELECT DISTINCT r FROM Response r LEFT JOIN FETCH r.answers WHERE r.id = :id")
     Response findByIdWithAnswers(@Param("id") Long id);
 
     List<Response> findByFormId(Long formId);

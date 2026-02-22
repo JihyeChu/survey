@@ -525,7 +525,7 @@
      * Check if file is an image based on extension
      */
     function isImageFile(extension) {
-        const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+        const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'tiff', 'tif', 'heic', 'heif'];
         return imageExtensions.includes(extension);
     }
 

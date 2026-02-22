@@ -304,8 +304,19 @@
                 return;
             }
 
+            const failedUploads = [];
+
             for (const question of questionsWithPending) {
                 if (!question.serverId) {
+                    console.warn('질문에 serverId가 없어 첨부파일 업로드를 건너뜁니다:', question.id);
+                    failedUploads.push(question.attachmentFilename || question.id);
+                    continue;
+                }
+
+                // base64Data가 없으면 건너뜀 (localStorage 용량 초과로 제거된 경우)
+                if (!question.pendingAttachment.base64Data) {
+                    console.warn('첨부파일 base64 데이터가 없습니다 (localStorage 용량 초과 가능성):', question.id);
+                    failedUploads.push(question.attachmentFilename || question.id);
                     continue;
                 }
 
@@ -327,7 +338,9 @@
                     });
 
                     if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
+                        const errorBody = await response.json().catch(() => ({}));
+                        const errorMsg = errorBody.error || `HTTP ${response.status}`;
+                        throw new Error(errorMsg);
                     }
 
                     const updatedQuestion = await response.json();
@@ -365,7 +378,8 @@
                     }
 
                 } catch (error) {
-                    console.error('Failed to upload attachment for question:', question.id, error);
+                    console.error('첨부파일 업로드 실패:', question.id, error);
+                    failedUploads.push(question.attachmentFilename || question.id);
                 }
             }
 
@@ -374,6 +388,12 @@
             // UI 갱신
             if (window.FormApp?.renderQuestions) {
                 window.FormApp.renderQuestions();
+            }
+
+            // 실패한 업로드 사용자에게 알림
+            if (failedUploads.length > 0) {
+                const failedNames = failedUploads.join(', ');
+                alert(`다음 질문의 첨부파일 업로드에 실패했습니다:\n${failedNames}\n\n지원되지 않는 파일 형식이거나 파일 크기가 너무 클 수 있습니다. 첨부파일을 제거하고 다시 시도해 주세요.`);
             }
         },
 

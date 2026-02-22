@@ -22,14 +22,20 @@ public class FileStorageService {
     private long maxFileSize;
 
     private static final Set<String> ALLOWED_EXTENSIONS = new HashSet<>(Arrays.asList(
-            "jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "xls", "xlsx",
-            "ppt", "pptx", "txt", "zip", "rar", "7z", "csv"
+            "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif", "svg", "heic", "heif",
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "zip", "rar", "7z", "csv"
     ));
 
     private static final Set<String> ALLOWED_MIME_TYPES = new HashSet<>(Arrays.asList(
             "image/jpeg",
             "image/png",
             "image/gif",
+            "image/webp",
+            "image/bmp",
+            "image/tiff",
+            "image/svg+xml",
+            "image/heic",
+            "image/heif",
             "application/pdf",
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -41,7 +47,9 @@ public class FileStorageService {
             "application/zip",
             "application/x-rar-compressed",
             "application/x-7z-compressed",
-            "text/csv"
+            "application/x-zip-compressed",
+            "text/csv",
+            "application/octet-stream"
     ));
 
     public FileStorageService() {
@@ -66,8 +74,11 @@ public class FileStorageService {
             throw new IllegalArgumentException("File extension not allowed: " + fileExtension);
         }
 
+        // MIME 타입이 null이거나 application/octet-stream인 경우 확장자로 대체 허용
         String contentType = file.getContentType();
-        if (contentType == null || !ALLOWED_MIME_TYPES.contains(contentType)) {
+        boolean isMimeTypeGeneric = contentType == null || contentType.isEmpty()
+                || contentType.equals("application/octet-stream");
+        if (!isMimeTypeGeneric && !ALLOWED_MIME_TYPES.contains(contentType)) {
             throw new IllegalArgumentException("Content type not allowed: " + contentType);
         }
     }

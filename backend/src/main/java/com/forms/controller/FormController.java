@@ -94,7 +94,7 @@ public class FormController {
     }
 
     @PostMapping("/{formId}/questions/{questionId}/attachment")
-    public ResponseEntity<QuestionResponse> uploadQuestionAttachment(
+    public ResponseEntity<?> uploadQuestionAttachment(
             @PathVariable Long formId,
             @PathVariable Long questionId,
             @RequestParam("file") MultipartFile file) {
@@ -106,9 +106,13 @@ public class FormController {
 
             log.info("Attachment uploaded successfully for questionId: {}", questionId);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (IllegalArgumentException e) {
+            log.warn("Attachment validation failed for questionId: {}: {}", questionId, e.getMessage());
+            return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage()));
         } catch (IOException e) {
             log.error("Failed to upload attachment for questionId: {}", questionId, e);
-            throw new RuntimeException("Attachment upload failed: " + e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(java.util.Map.of("error", "Attachment upload failed: " + e.getMessage()));
         }
     }
 
@@ -136,14 +140,17 @@ public class FormController {
             return ResponseEntity.ok()
                     .headers(headers)
                     .body(fileContent);
+        } catch (IllegalArgumentException e) {
+            log.warn("Attachment not found for questionId: {}: {}", questionId, e.getMessage());
+            return ResponseEntity.notFound().build();
         } catch (IOException e) {
             log.error("Failed to download attachment for questionId: {}", questionId, e);
-            throw new RuntimeException("Attachment download failed: " + e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     @DeleteMapping("/{formId}/questions/{questionId}/attachment")
-    public ResponseEntity<QuestionResponse> deleteQuestionAttachment(
+    public ResponseEntity<?> deleteQuestionAttachment(
             @PathVariable Long formId,
             @PathVariable Long questionId) {
         try {
@@ -153,9 +160,13 @@ public class FormController {
 
             log.info("Attachment deleted successfully for questionId: {}", questionId);
             return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.warn("Attachment deletion validation failed for questionId: {}: {}", questionId, e.getMessage());
+            return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage()));
         } catch (IOException e) {
             log.error("Failed to delete attachment for questionId: {}", questionId, e);
-            throw new RuntimeException("Attachment deletion failed: " + e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(java.util.Map.of("error", "Attachment deletion failed: " + e.getMessage()));
         }
     }
 
