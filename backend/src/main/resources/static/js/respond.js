@@ -1439,23 +1439,6 @@
                 editButton.type = 'button';
                 editButton.className = 'respond-edit-response-btn';
                 editButton.textContent = '응답 수정하기';
-                editButton.style.marginTop = '16px';
-                editButton.style.padding = '10px 24px';
-                editButton.style.backgroundColor = '#3b82f6';
-                editButton.style.color = '#fff';
-                editButton.style.border = 'none';
-                editButton.style.borderRadius = '4px';
-                editButton.style.fontSize = '14px';
-                editButton.style.fontWeight = '500';
-                editButton.style.cursor = 'pointer';
-                editButton.style.transition = 'background-color 0.2s';
-
-                editButton.addEventListener('mouseover', () => {
-                    editButton.style.backgroundColor = '#2563eb';
-                });
-                editButton.addEventListener('mouseout', () => {
-                    editButton.style.backgroundColor = '#3b82f6';
-                });
 
                 editButton.addEventListener('click', () => {
                     window.location.href = `respond.html?formId=${formId}&responseId=${newResponseId}`;

@@ -533,6 +533,20 @@
                 };
             };
 
+            // settings가 문자열로 내려오는 경우 파싱 (FormResponse는 @JsonRawValue 없음)
+            let parsedSettings = {};
+            if (serverForm.settings) {
+                if (typeof serverForm.settings === 'string') {
+                    try {
+                        parsedSettings = JSON.parse(serverForm.settings);
+                    } catch (e) {
+                        parsedSettings = {};
+                    }
+                } else {
+                    parsedSettings = serverForm.settings;
+                }
+            }
+
             const result = {
                 id: window.FormApp?.getForm()?.id || serverForm.id,
                 publishedId: serverForm.id,
@@ -541,7 +555,7 @@
                 createdAt: serverForm.createdAt,
                 updatedAt: serverForm.updatedAt,
                 publishedAt: new Date().toISOString(),
-                settings: serverForm.settings || {},
+                settings: parsedSettings,
                 responses: [],
                 questions: [],
                 sections: [],
