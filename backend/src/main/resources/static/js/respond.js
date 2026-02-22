@@ -429,8 +429,8 @@
 
         card.appendChild(header);
 
-        // 질문 첨부파일 표시 (attachmentFilename 또는 attachmentStoredName 필드 확인)
-        if (question.attachmentFilename || question.attachmentStoredName) {
+        // 질문 첨부파일 표시 (attachmentStoredName이 있어야 실제로 서버에 파일이 존재)
+        if (question.attachmentStoredName) {
             const attachmentElement = createAttachmentElement(question);
             card.appendChild(attachmentElement);
         }

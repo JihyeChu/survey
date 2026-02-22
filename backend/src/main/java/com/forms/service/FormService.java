@@ -90,6 +90,9 @@ public class FormService {
                                 .required(qReq.getRequired() != null ? qReq.getRequired() : false)
                                 .orderIndex(qReq.getOrderIndex() != null ? qReq.getOrderIndex() : 0)
                                 .config(convertConfig(qReq))
+                                .attachmentFilename(qReq.getAttachmentFilename())
+                                .attachmentStoredName(qReq.getAttachmentStoredName())
+                                .attachmentContentType(qReq.getAttachmentContentType())
                                 .build();
 
                         questionRepository.save(question);
@@ -109,6 +112,9 @@ public class FormService {
                         .required(qReq.getRequired() != null ? qReq.getRequired() : false)
                         .orderIndex(qReq.getOrderIndex() != null ? qReq.getOrderIndex() : 0)
                         .config(convertConfig(qReq))
+                        .attachmentFilename(qReq.getAttachmentFilename())
+                        .attachmentStoredName(qReq.getAttachmentStoredName())
+                        .attachmentContentType(qReq.getAttachmentContentType())
                         .build();
 
                 questionRepository.save(question);

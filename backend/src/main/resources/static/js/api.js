@@ -431,6 +431,9 @@
                     required: q.required || false,
                     orderIndex: idx,
                     config: config,
+                    attachmentFilename: q.attachmentFilename || null,
+                    attachmentStoredName: q.attachmentStoredName || null,
+                    attachmentContentType: q.attachmentContentType || null,
                 };
                 return result;
             };

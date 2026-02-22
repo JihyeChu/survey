@@ -123,11 +123,13 @@ public class FormController {
             byte[] fileContent = questionService.downloadAttachment(questionId);
 
             HttpHeaders headers = new HttpHeaders();
-            ContentDisposition contentDisposition = ContentDisposition.attachment()
+            String contentType = questionResponse.getAttachmentContentType();
+            boolean isImage = contentType != null && contentType.startsWith("image/");
+            ContentDisposition contentDisposition = (isImage ? ContentDisposition.inline() : ContentDisposition.attachment())
                     .filename(questionResponse.getAttachmentFilename(), StandardCharsets.UTF_8)
                     .build();
             headers.setContentDisposition(contentDisposition);
-            headers.set(HttpHeaders.CONTENT_TYPE, questionResponse.getAttachmentContentType());
+            headers.set(HttpHeaders.CONTENT_TYPE, contentType != null ? contentType : "application/octet-stream");
             headers.setContentLength(fileContent.length);
 
             log.info("Attachment downloaded successfully for questionId: {}", questionId);
