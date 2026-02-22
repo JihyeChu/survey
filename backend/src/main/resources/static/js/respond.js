@@ -1426,26 +1426,21 @@
             elements.successMessage.textContent = '감사합니다. 귀하의 응답이 기록되었습니다.';
         }
 
-        // 응답 수정 허용 설정이 ON인 경우 "응답 수정하기" 버튼 표시
+        // responseId가 있으면 항상 "응답 수정하기" 버튼 표시
         elements.successActions.innerHTML = '';
-        if (!isEditMode && formData.settings && formData.settings.allowResponseEdit) {
+        if (responseId) {
             const formId = getFormIdFromUrl();
-            const newResponseId = responseId; // 방금 생성된 응답 ID
 
-            // 응답 제출 후 서버에서 받은 응답 ID가 필요
-            // submitResponses 함수에서 반환된 객체에서 ID 추출
-            if (newResponseId) {
-                const editButton = document.createElement('button');
-                editButton.type = 'button';
-                editButton.className = 'respond-edit-response-btn';
-                editButton.textContent = '응답 수정하기';
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.className = 'respond-edit-response-btn';
+            editButton.textContent = '응답 수정하기';
 
-                editButton.addEventListener('click', () => {
-                    window.location.href = `respond.html?formId=${formId}&responseId=${newResponseId}`;
-                });
+            editButton.addEventListener('click', () => {
+                window.location.href = `respond.html?formId=${formId}&responseId=${responseId}`;
+            });
 
-                elements.successActions.appendChild(editButton);
-            }
+            elements.successActions.appendChild(editButton);
         }
     }
 
