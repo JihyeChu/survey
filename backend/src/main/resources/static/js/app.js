@@ -3168,10 +3168,10 @@
      */
     function collectResponses() {
         const form = getForm();
-        const questions = form.questions || [];
+        const allQuestions = getAllPreviewQuestions(form);
         const answers = [];
 
-        questions.forEach(question => {
+        allQuestions.forEach(question => {
             const value = getResponseValue(question);
             answers.push({
                 questionId: question.id,
@@ -3227,7 +3227,7 @@
      */
     function validateResponses(answers) {
         const form = getForm();
-        const questions = form.questions || [];
+        const questions = getAllPreviewQuestions(form);
         const errors = [];
 
         questions.forEach(question => {
@@ -3407,27 +3407,44 @@
     }
 
     /**
+     * Get all questions from form (root + section questions)
+     * @param {Object} form - Form object
+     * @returns {Array} Flat array of all questions
+     */
+    function getAllPreviewQuestions(form) {
+        const rootQuestions = form.questions || [];
+        const sectionQuestions = (form.sections || []).flatMap(s => s.questions || []);
+        return [...rootQuestions, ...sectionQuestions];
+    }
+
+    /**
      * Render Preview
      */
     function renderPreview() {
         const form = getForm();
-        const questions = form.questions || [];
+        const sections = form.sections || [];
+        const rootQuestions = form.questions || [];
 
-        if (questions.length === 0) {
+        // Collect all questions in display order
+        const allQuestions = [...rootQuestions];
+        sections.forEach(section => {
+            (section.questions || []).forEach(q => allQuestions.push(q));
+        });
+
+        if (allQuestions.length === 0) {
             previewContainer.innerHTML = '<div class="empty-state"><h2>질문이 없습니다</h2><p>질문을 추가한 후 미리보기를 확인하세요.</p></div>';
             return;
         }
 
-        // Render form header + questions
-        previewContainer.innerHTML = `
-            <div class="preview-form-header">
-                <h1 class="preview-form-title">${escapeHtml(form.title || '새 설문지')}</h1>
-                ${form.description ? `<p class="preview-form-description">${escapeHtml(form.description)}</p>` : ''}
-                <p class="preview-required-notice">* 표시는 필수 질문입니다</p>
-            </div>
-            ${questions.map((question, index) => `
+        // Build question cards, with section headers if sections exist
+        let questionIndex = 0;
+        let questionsHtml = '';
+
+        // Root-level questions first
+        rootQuestions.forEach(question => {
+            questionsHtml += `
                 <div class="preview-question-card" data-question-id="${question.id}">
-                    <div class="preview-question-number">질문 ${index + 1}</div>
+                    <div class="preview-question-number">질문 ${++questionIndex}</div>
                     <div class="preview-question-title">
                         ${escapeHtml(question.title || '(제목 없음)')}
                         ${question.required ? '<span class="required-asterisk"> *</span>' : ''}
@@ -3435,7 +3452,43 @@
                     ${question.description ? `<div class="preview-question-description">${escapeHtml(question.description)}</div>` : ''}
                     ${renderPreviewInput(question)}
                 </div>
-            `).join('')}
+            `;
+        });
+
+        // Sections with their questions
+        sections.forEach(section => {
+            const sectionQuestions = section.questions || [];
+            if (sectionQuestions.length === 0) return;
+
+            questionsHtml += `
+                <div class="preview-section-header">
+                    <h2 class="preview-section-title">${escapeHtml(section.title || '섹션')}</h2>
+                    ${section.description ? `<p class="preview-section-description">${escapeHtml(section.description)}</p>` : ''}
+                </div>
+            `;
+
+            sectionQuestions.forEach(question => {
+                questionsHtml += `
+                    <div class="preview-question-card" data-question-id="${question.id}">
+                        <div class="preview-question-number">질문 ${++questionIndex}</div>
+                        <div class="preview-question-title">
+                            ${escapeHtml(question.title || '(제목 없음)')}
+                            ${question.required ? '<span class="required-asterisk"> *</span>' : ''}
+                        </div>
+                        ${question.description ? `<div class="preview-question-description">${escapeHtml(question.description)}</div>` : ''}
+                        ${renderPreviewInput(question)}
+                    </div>
+                `;
+            });
+        });
+
+        previewContainer.innerHTML = `
+            <div class="preview-form-header">
+                <h1 class="preview-form-title">${escapeHtml(form.title || '새 설문지')}</h1>
+                ${form.description ? `<p class="preview-form-description">${escapeHtml(form.description)}</p>` : ''}
+                <p class="preview-required-notice">* 표시는 필수 질문입니다</p>
+            </div>
+            ${questionsHtml}
             <div class="preview-submit-section">
                 <button class="btn btn-primary preview-submit-btn" type="button">제출</button>
             </div>
@@ -3456,10 +3509,10 @@
 
         switch (type) {
             case 'short-text':
-                return '<input type="text" class="preview-input-field" placeholder="내 답변" />';
+                return `<input type="text" name="q_${question.id}" class="preview-input-field" placeholder="내 답변" />`;
 
             case 'long-text':
-                return '<textarea class="preview-input-field preview-textarea" placeholder="내 답변"></textarea>';
+                return `<textarea name="q_${question.id}" class="preview-input-field preview-textarea" placeholder="내 답변"></textarea>`;
 
             case 'multiple-choice':
                 if (options.length === 0) {
@@ -3531,7 +3584,7 @@
                 `;
 
             case 'date':
-                return '<input type="date" class="preview-input-field preview-date" />';
+                return `<input type="date" name="q_${question.id}" class="preview-input-field preview-date" />`;
 
             default:
                 return '<input type="text" class="preview-input-field" placeholder="내 답변" />';

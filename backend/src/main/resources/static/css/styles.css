@@ -1015,7 +1015,29 @@ html, body {
 
 /* Preview Mode Styles */
 .preview-mode-hidden {
-    display: block;
+    display: none;
+}
+
+.preview-section-header {
+    background-color: var(--white);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 8px;
+    box-shadow: var(--shadow-sm);
+    border-top: 4px solid var(--primary-color);
+}
+
+.preview-section-title {
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin: 0 0 6px 0;
+}
+
+.preview-section-description {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
 }
 
 .preview-content-hidden {
