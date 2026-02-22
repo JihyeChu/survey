@@ -60,4 +60,55 @@ public class ResponseController {
         log.info("Found {} responses for formId: {}", responses.size(), formId);
         return ResponseEntity.ok(responses);
     }
+
+    /**
+     * 특정 응답 조회 API
+     * GET /api/forms/{formId}/responses/{responseId}
+     *
+     * 응답자가 수정하기 위해 기존 응답 정보를 불러온다.
+     *
+     * @param formId 폼 ID
+     * @param responseId 조회할 응답 ID
+     * @return 응답 정보
+     */
+    @GetMapping("/forms/{formId}/responses/{responseId}")
+    public ResponseEntity<ResponseDto> getResponse(
+            @PathVariable Long formId,
+            @PathVariable Long responseId) {
+        log.info("Fetching response {} for formId: {}", responseId, formId);
+        ResponseDto response = responseService.getResponseByIdAndFormId(formId, responseId);
+        log.info("Response {} fetched successfully", responseId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 응답 수정 API
+     * PUT /api/forms/{formId}/responses/{responseId}
+     *
+     * 응답자가 제출한 응답을 수정한다.
+     * (응답 수정 허용 설정이 활성화된 경우에만 수정 가능)
+     *
+     * @param formId 폼 ID
+     * @param responseId 수정할 응답 ID
+     * @param request 수정할 응답 정보
+     * @return 수정된 응답 정보
+     */
+    @PutMapping("/forms/{formId}/responses/{responseId}")
+    public ResponseEntity<ResponseDto> updateResponse(
+            @PathVariable Long formId,
+            @PathVariable Long responseId,
+            @RequestBody ResponseRequest request) {
+        log.info("Updating response {} for formId: {}", responseId, formId);
+        try {
+            ResponseDto response = responseService.updateResponse(formId, responseId, request);
+            log.info("Response {} updated successfully", responseId);
+            return ResponseEntity.ok(response);
+        } catch (IllegalStateException e) {
+            log.warn("Response edit not allowed for formId: {}", formId);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (IllegalArgumentException e) {
+            log.error("Error updating response: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+    }
 }

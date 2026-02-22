@@ -27,7 +27,10 @@
         errorBanner: document.getElementById('error-banner'),
         errorMessage: document.getElementById('error-message'),
         errorCloseBtn: document.getElementById('error-close-btn'),
-        successScreen: document.getElementById('success-screen')
+        successScreen: document.getElementById('success-screen'),
+        successTitle: document.getElementById('success-title'),
+        successMessage: document.getElementById('success-message'),
+        successActions: document.getElementById('success-actions')
     };
 
     // ========================================================
@@ -37,6 +40,8 @@
     let responses = {};  // questionId -> value
     let respondentEmail = '';  // 응답자 이메일
     let currentSectionIndex = 0;  // 현재 섹션 인덱스
+    let responseId = null;  // 수정 모드 여부 (responseId가 있으면 수정 모드)
+    let isEditMode = false;  // 수정 모드 플래그
 
     // ========================================================
     // HELPER FUNCTIONS
@@ -81,8 +86,18 @@
                 return;
             }
 
+            // URL에서 responseId 파라미터 읽기
+            responseId = getResponseIdFromUrl();
+            isEditMode = !!responseId;
+
             showLoading(true);
             await loadForm(formId);
+
+            // 수정 모드인 경우 기존 응답 로드
+            if (isEditMode && responseId) {
+                await loadExistingResponse(formId, responseId);
+            }
+
             renderForm();
             setupEventListeners();
         } catch (error) {
@@ -99,6 +114,11 @@
     function getFormIdFromUrl() {
         const params = new URLSearchParams(window.location.search);
         return params.get('formId');
+    }
+
+    function getResponseIdFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('responseId');
     }
 
     async function loadForm(formId) {
@@ -122,6 +142,67 @@
         } catch (error) {
             console.error('Error loading form:', error);
             throw new Error('폼을 불러오지 못했습니다.');
+        }
+    }
+
+    /**
+     * 기존 응답 데이터 로드
+     * 응답의 answers 배열을 responses 객체에 변환
+     */
+    async function loadExistingResponse(formId, respId) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/forms/${formId}/responses/${respId}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const existingResponse = await response.json();
+
+            if (!existingResponse) {
+                throw new Error('응답 데이터가 없습니다.');
+            }
+
+            // 응답의 answers 배열을 responses 객체로 변환
+            // answers: [{questionId: 123, value: "답변"}, ...]
+            if (existingResponse.answers && Array.isArray(existingResponse.answers)) {
+                existingResponse.answers.forEach(answer => {
+                    const qId = answer.questionId;
+
+                    // 값의 타입에 따라 처리
+                    if (typeof answer.value === 'string') {
+                        try {
+                            // JSON 배열인지 확인 (checkbox의 경우)
+                            const parsed = JSON.parse(answer.value);
+                            if (Array.isArray(parsed)) {
+                                responses[qId] = parsed;
+                            } else {
+                                responses[qId] = answer.value;
+                            }
+                        } catch (e) {
+                            // JSON 파싱 실패 → 문자열 그대로 사용
+                            responses[qId] = answer.value;
+                        }
+                    } else {
+                        responses[qId] = answer.value;
+                    }
+                });
+            }
+
+            // 이메일 정보도 저장
+            if (existingResponse.email) {
+                respondentEmail = existingResponse.email;
+            }
+
+            console.log('Loaded existing response:', existingResponse);
+        } catch (error) {
+            console.error('Error loading existing response:', error);
+            throw new Error('기존 응답을 불러오지 못했습니다.');
         }
     }
 
@@ -151,7 +232,30 @@
     }
 
     function renderFormHeader() {
-        elements.formTitle.textContent = formData.title || '제목 없음';
+        const title = formData.title || '제목 없음';
+        const headerWrapper = document.createElement('div');
+        headerWrapper.style.display = 'flex';
+        headerWrapper.style.alignItems = 'center';
+        headerWrapper.style.gap = '12px';
+
+        // 제목
+        elements.formTitle.textContent = title;
+
+        // 수정 모드 뱃지
+        if (isEditMode) {
+            const badge = document.createElement('span');
+            badge.className = 'respond-edit-mode-badge';
+            badge.textContent = '수정 중';
+            badge.style.display = 'inline-block';
+            badge.style.backgroundColor = '#fbbf24';
+            badge.style.color = '#78350f';
+            badge.style.padding = '4px 12px';
+            badge.style.borderRadius = '12px';
+            badge.style.fontSize = '12px';
+            badge.style.fontWeight = '600';
+            elements.formTitle.parentElement.appendChild(badge);
+        }
+
         elements.formDescription.textContent = formData.description || '';
     }
 
@@ -1002,7 +1106,12 @@
                 submitData.email = respondentEmail;
             }
 
-            await submitResponses(formId, submitData);
+            const submitResult = await submitResponses(formId, submitData);
+
+            // 신규 응답의 경우 응답 ID 저장 (응답 수정 버튼용)
+            if (!isEditMode && submitResult && submitResult.id) {
+                responseId = submitResult.id;
+            }
 
             // 성공 화면 표시
             showSuccessScreen();
@@ -1230,13 +1339,28 @@
     // SUBMISSION
     // ========================================================
     async function submitResponses(formId, submitData) {
-        const response = await fetch(`${API_BASE_URL}/forms/${formId}/responses`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(submitData)
-        });
+        let response;
+
+        // 수정 모드 (responseId가 있는 경우): PUT 요청 사용
+        if (isEditMode && responseId) {
+            response = await fetch(`${API_BASE_URL}/forms/${formId}/responses/${responseId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(submitData)
+            });
+        }
+        // 신규 응답 (responseId가 없는 경우): POST 요청 사용
+        else {
+            response = await fetch(`${API_BASE_URL}/forms/${formId}/responses`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(submitData)
+            });
+        }
 
         if (!response.ok) {
             const error = await response.json().catch(() => ({}));
@@ -1292,6 +1416,54 @@
     function showSuccessScreen() {
         elements.formContainer.style.display = 'none';
         elements.successScreen.style.display = 'block';
+
+        // 수정 모드와 신규 응답 모드에 따라 메시지 변경
+        if (isEditMode) {
+            elements.successTitle.textContent = '응답이 수정되었습니다';
+            elements.successMessage.textContent = '응답 수정이 완료되었습니다.';
+        } else {
+            elements.successTitle.textContent = '응답이 제출되었습니다';
+            elements.successMessage.textContent = '감사합니다. 귀하의 응답이 기록되었습니다.';
+        }
+
+        // 응답 수정 허용 설정이 ON인 경우 "응답 수정하기" 버튼 표시
+        elements.successActions.innerHTML = '';
+        if (!isEditMode && formData.settings && formData.settings.allowResponseEdit) {
+            const formId = getFormIdFromUrl();
+            const newResponseId = responseId; // 방금 생성된 응답 ID
+
+            // 응답 제출 후 서버에서 받은 응답 ID가 필요
+            // submitResponses 함수에서 반환된 객체에서 ID 추출
+            if (newResponseId) {
+                const editButton = document.createElement('button');
+                editButton.type = 'button';
+                editButton.className = 'respond-edit-response-btn';
+                editButton.textContent = '응답 수정하기';
+                editButton.style.marginTop = '16px';
+                editButton.style.padding = '10px 24px';
+                editButton.style.backgroundColor = '#3b82f6';
+                editButton.style.color = '#fff';
+                editButton.style.border = 'none';
+                editButton.style.borderRadius = '4px';
+                editButton.style.fontSize = '14px';
+                editButton.style.fontWeight = '500';
+                editButton.style.cursor = 'pointer';
+                editButton.style.transition = 'background-color 0.2s';
+
+                editButton.addEventListener('mouseover', () => {
+                    editButton.style.backgroundColor = '#2563eb';
+                });
+                editButton.addEventListener('mouseout', () => {
+                    editButton.style.backgroundColor = '#3b82f6';
+                });
+
+                editButton.addEventListener('click', () => {
+                    window.location.href = `respond.html?formId=${formId}&responseId=${newResponseId}`;
+                });
+
+                elements.successActions.appendChild(editButton);
+            }
+        }
     }
 
     function showLoading(show) {

@@ -353,6 +353,7 @@
             await window.PersistenceManager.publish();
             setSyncStatus('published', '게시됨');
             publishBtn.textContent = '업데이트';
+            hideSettingsNotification();
             alert('폼이 성공적으로 게시되었습니다!');
         } catch (error) {
             console.error('Publish error:', error);
@@ -1435,6 +1436,27 @@
         }
         form.settings[key] = value;
         saveForm(form);
+        showSettingsNotification();
+    }
+
+    /**
+     * Show settings change notification
+     */
+    function showSettingsNotification() {
+        const notification = document.getElementById('settings-notification');
+        if (notification) {
+            notification.style.display = 'flex';
+        }
+    }
+
+    /**
+     * Hide settings change notification
+     */
+    function hideSettingsNotification() {
+        const notification = document.getElementById('settings-notification');
+        if (notification) {
+            notification.style.display = 'none';
+        }
     }
 
     /**

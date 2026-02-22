@@ -562,6 +562,51 @@ html, body {
     outline-offset: 2px;
 }
 
+/* Settings Notification */
+.settings-notification {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    margin-top: 20px;
+    background-color: #fff3cd;
+    border-left: 4px solid #ffc107;
+    border-radius: 4px;
+    animation: slideIn 0.3s ease;
+}
+
+.settings-notification .notification-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #856404;
+}
+
+.settings-notification .notification-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.settings-notification .notification-text {
+    font-size: 14px;
+    color: #856404;
+    font-weight: 500;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* Builder Styles */
 .builder-header {
     display: flex;
