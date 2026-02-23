@@ -889,7 +889,7 @@
         // config에서 파일 설정 추출
         let fileConfig = {
             allowedExtensions: [],
-            maxFileSize: 10485760, // 10MB 기본값
+            maxFileSize: 3145728, // 3MB in bytes
             allowMultiple: false
         };
 
@@ -902,7 +902,7 @@
                 if (config && typeof config === 'object') {
                     fileConfig = {
                         allowedExtensions: config.allowedExtensions || [],
-                        maxFileSize: config.maxFileSize || 10485760,
+                        maxFileSize: normalizeMaxFileSize(config.maxFileSize) || 3145728,
                         allowMultiple: config.allowMultiple || false
                     };
                 }
@@ -1245,38 +1245,59 @@
     /**
      * 파일 크기 검증 (모든 파일, 모든 섹션 포함)
      */
+    /**
+     * maxFileSize 값을 bytes로 정규화
+     * 구버전 config는 MB 단위(10 등 작은 정수)로 저장되어 있을 수 있으므로
+     * 1024 이하의 값은 MB로 간주하여 bytes로 변환
+     */
+    function normalizeMaxFileSize(value) {
+        if (!value || value <= 0) return 3145728; // 기본 3MB
+        if (value <= 1024) return value * 1024 * 1024; // MB → bytes 변환
+        return value; // 이미 bytes 단위
+    }
+
     function validateFileSizes() {
         const questions = getAllQuestions(formData);
         const errors = [];
+        const oversizedFiles = [];
 
         questions.forEach((question) => {
             if (question.type !== 'file-upload') return;
 
             const value = responses[question.id];
-            if (!value || !value.files) return;
+            if (!value || !value.files || value.files.length === 0) return;
 
-            let fileConfig = { maxFileSize: 10485760 };
+            let maxFileSizeBytes = 3145728; // 3MB default
             if (question.config) {
                 try {
                     const config = typeof question.config === 'string'
                         ? JSON.parse(question.config)
                         : question.config;
-                    fileConfig = { maxFileSize: config.maxFileSize || 10485760 };
+                    if (config && typeof config === 'object' && config.maxFileSize) {
+                        maxFileSizeBytes = normalizeMaxFileSize(config.maxFileSize);
+                    }
                 } catch (e) {
-                    console.warn('Failed to parse config for file size:', e);
+                    // parse 실패 시 기본값 유지
                 }
             }
 
+            const maxSizeMB = (maxFileSizeBytes / (1024 * 1024)).toFixed(0);
+
             value.files.forEach((file) => {
-                if (file.size > fileConfig.maxFileSize) {
-                    const maxSizeMB = Math.round(fileConfig.maxFileSize / (1024 * 1024));
+                if (file.size > maxFileSizeBytes) {
+                    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+                    oversizedFiles.push(`• ${file.name} (${fileSizeMB}MB) - 최대 ${maxSizeMB}MB`);
                     errors.push({
                         questionId: question.id,
-                        message: `파일 크기가 너무 큽니다 (최대: ${maxSizeMB} MB)`
+                        message: `파일 크기 초과: ${file.name} (${fileSizeMB}MB / 최대 ${maxSizeMB}MB)`
                     });
                 }
             });
         });
+
+        if (oversizedFiles.length > 0) {
+            alert(`파일 크기 제한을 초과하여 제출할 수 없습니다.\n\n${oversizedFiles.join('\n')}\n\n파일을 교체하거나 삭제 후 다시 시도해주세요.`);
+        }
 
         return errors;
     }
