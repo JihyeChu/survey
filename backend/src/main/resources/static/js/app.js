@@ -176,7 +176,7 @@
         if (type === 'file-upload') {
             question.config = {
                 allowedExtensions: [],
-                maxFileSize: 10,
+                maxFileSize: 3145728, // 3MB in bytes
                 allowMultiple: false
             };
         }
@@ -733,6 +733,7 @@
         renderQuestions();
         updateSyncStatus();
         updateReadOnlyBanner();
+        restoreSettings();
     }
 
     /**
@@ -759,6 +760,7 @@
                 renderQuestions();
                 updateSyncStatus();
                 updateReadOnlyBanner();
+                restoreSettings();
             }
         } else if (source === 'server') {
             // Load from server
@@ -796,6 +798,7 @@
             renderQuestions();
             updateSyncStatus();
             updateReadOnlyBanner();
+            restoreSettings();
         } catch (error) {
             console.error('Error loading published form:', error);
             alert('설문을 불러오는데 실패했습니다: ' + error.message);
@@ -2830,6 +2833,14 @@
         }
 
         // If not published, store file as base64 locally
+        // localStorage has limited capacity (~5MB), base64 adds ~33% overhead
+        const MAX_LOCAL_ATTACHMENT_SIZE = 1 * 1024 * 1024; // 1MB
+        if (file.size > MAX_LOCAL_ATTACHMENT_SIZE) {
+            const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+            alert(`첨부파일이 너무 큽니다 (${sizeMB}MB).\n임시저장 중에는 1MB 이하의 파일만 첨부할 수 있습니다.\n\n폼을 먼저 게시한 후 첨부파일을 추가해주세요.`);
+            return;
+        }
+
         try {
             const base64Data = await fileToBase64(file);
             const updatedData = {
@@ -3679,11 +3690,11 @@
                     const newState = deepMerge(currentState, updates);
                     newState.form.updatedAt = new Date().toISOString();
 
-                    // pendingAttachment의 base64Data만 제거
+                    // pendingAttachment 전체 제거 (base64Data가 없는 껍데기만 남으면 게시 시 첨부 실패 유발)
                     if (newState.form.questions) {
                         newState.form.questions = newState.form.questions.map(q => {
                             if (q.pendingAttachment && q.pendingAttachment.base64Data) {
-                                return { ...q, pendingAttachment: { ...q.pendingAttachment, base64Data: null } };
+                                return { ...q, pendingAttachment: null, attachmentFilename: null, attachmentContentType: null, attachmentPreviewUrl: null };
                             }
                             return q;
                         });
@@ -3693,7 +3704,7 @@
                             ...s,
                             questions: (s.questions || []).map(q => {
                                 if (q.pendingAttachment && q.pendingAttachment.base64Data) {
-                                    return { ...q, pendingAttachment: { ...q.pendingAttachment, base64Data: null } };
+                                    return { ...q, pendingAttachment: null, attachmentFilename: null, attachmentContentType: null, attachmentPreviewUrl: null };
                                 }
                                 return q;
                             })
