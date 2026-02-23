@@ -1,0 +1,173 @@
+{
+  "timestamp": "2026-02-22T02:46:55.268Z",
+  "reason": "compaction",
+  "status": {
+    "version": "2.0",
+    "lastUpdated": "2026-02-22T02:10:11.933Z",
+    "activeFeatures": [
+      "stress-test",
+      "repository",
+      "js",
+      "service",
+      "controller"
+    ],
+    "primaryFeature": "stress-test",
+    "features": {
+      "stress-test": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-02-20T04:58:07.751Z",
+          "lastUpdated": "2026-02-20T04:58:07.751Z"
+        },
+        "lastFile": "/Users/t2023-m0117/Documents/Dev/google-form-clone/stress-test/run.sh"
+      },
+      "repository": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-02-20T05:04:20.084Z",
+          "lastUpdated": "2026-02-20T05:04:20.084Z"
+        },
+        "lastFile": "/Users/t2023-m0117/Documents/Dev/google-form-clone/backend/src/main/java/com/forms/repository/ResponseRepository.java"
+      },
+      "js": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-02-20T05:15:59.846Z",
+          "lastUpdated": "2026-02-22T02:10:11.933Z"
+        },
+        "lastFile": "/Users/t2023-m0117/Documents/Dev/google-form-clone/backend/src/main/resources/static/js/app.js"
+      },
+      "service": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-02-20T06:19:26.768Z",
+          "lastUpdated": "2026-02-20T06:19:33.615Z"
+        },
+        "lastFile": "/Users/t2023-m0117/Documents/Dev/google-form-clone/backend/src/main/java/com/forms/service/FormService.java"
+      },
+      "controller": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-02-20T06:19:40.052Z",
+          "lastUpdated": "2026-02-20T06:19:40.052Z"
+        },
+        "lastFile": "/Users/t2023-m0117/Documents/Dev/google-form-clone/backend/src/main/java/com/forms/controller/FormController.java"
+      }
+    },
+    "pipeline": {
+      "currentPhase": 1,
+      "level": "Dynamic",
+      "phaseHistory": []
+    },
+    "session": {
+      "startedAt": "2026-02-20T04:58:07.750Z",
+      "onboardingCompleted": false,
+      "lastActivity": "2026-02-22T02:10:11.933Z"
+    },
+    "history": [
+      {
+        "timestamp": "2026-02-20T04:58:07.751Z",
+        "feature": "stress-test",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-20T05:04:20.084Z",
+        "feature": "repository",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-20T05:15:59.846Z",
+        "feature": "js",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-20T06:19:16.349Z",
+        "feature": "js",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-20T06:19:26.768Z",
+        "feature": "service",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-20T06:19:33.615Z",
+        "feature": "service",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-20T06:19:40.052Z",
+        "feature": "controller",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-20T06:43:58.135Z",
+        "feature": "js",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-22T02:09:28.961Z",
+        "feature": "js",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-22T02:09:59.255Z",
+        "feature": "js",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-22T02:10:04.260Z",
+        "feature": "js",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-22T02:10:07.163Z",
+        "feature": "js",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-22T02:10:11.933Z",
+        "feature": "js",
+        "phase": "do",
+        "action": "updated"
+      }
+    ]
+  }
+}

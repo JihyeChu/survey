@@ -1,0 +1,25 @@
+package com.survey.repository;
+
+import com.survey.entity.Form;
+import com.survey.entity.Response;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface ResponseRepository extends JpaRepository<Response, Long> {
+    List<Response> findByForm(Form form);
+
+    // files는 별도로 lazy loading (MultipleBagFetchException 방지: 두 List 동시 JOIN FETCH 불가)
+    @Query("SELECT DISTINCT r FROM Response r LEFT JOIN FETCH r.answers WHERE r.form = :form")
+    List<Response> findByFormWithAnswers(@Param("form") Form form);
+
+    @Query("SELECT DISTINCT r FROM Response r LEFT JOIN FETCH r.answers WHERE r.id = :id")
+    Response findByIdWithAnswers(@Param("id") Long id);
+
+    List<Response> findByFormId(Long formId);
+}

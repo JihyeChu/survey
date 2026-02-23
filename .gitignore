@@ -1,8 +1,52 @@
+HELP.md
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+.history/
+
 # Environment variables (secrets)
 **/.env
 .env
+.env.local
+.env.*.local
 **/.env.example
 .env.example
+
+# Spring Boot secrets
+/src/main/resources/application-key.yml
 
 # Claude/AI
 /.claude
@@ -13,11 +57,6 @@
 backend/.gradle/
 backend/build/
 backend/uploads/
-
-# IDE settings
-.vscode/
-.idea/
-*.iml
 
 # OS files
 .DS_Store
@@ -40,5 +79,5 @@ RESPONDER_IMPROVEMENTS.md
 RESPONDER_FINAL_REPORT.md
 survey-core/README.md
 
-# Output folder (duplicate/old)
+# Output folder
 ouput/
