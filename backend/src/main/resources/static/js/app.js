@@ -488,6 +488,21 @@
             // Get local drafts
             const localDrafts = getDraftForms();
 
+            // 현재 작업 중인 폼이 draft이고 목록에 없으면 포함
+            const currentForm = getForm();
+            const currentHasContent = (currentForm.questions && currentForm.questions.length > 0) ||
+                                      (currentForm.sections && currentForm.sections.length > 0);
+            if (currentForm.status !== FORM_STATUS.PUBLISHED && currentHasContent) {
+                const alreadyInList = localDrafts.some(d => d.id === currentForm.id);
+                if (!alreadyInList) {
+                    localDrafts.unshift(currentForm);
+                } else {
+                    // 이미 있으면 최신 상태로 갱신
+                    const idx = localDrafts.findIndex(d => d.id === currentForm.id);
+                    localDrafts[idx] = currentForm;
+                }
+            }
+
             // Get published forms from server
             let publishedForms = [];
             if (window.FormAPI) {
@@ -716,7 +731,9 @@
     function createNewForm() {
         // Save current form to drafts if it has content
         const currentForm = getForm();
-        if (currentForm.questions && currentForm.questions.length > 0) {
+        const hasContent = (currentForm.questions && currentForm.questions.length > 0) ||
+                           (currentForm.sections && currentForm.sections.length > 0);
+        if (hasContent) {
             saveToDraftForms(currentForm);
         }
 
@@ -749,7 +766,9 @@
             if (draft) {
                 // Save current form if has content
                 const currentForm = getForm();
-                if (currentForm.id !== formId && currentForm.questions && currentForm.questions.length > 0) {
+                const currentHasContent = (currentForm.questions && currentForm.questions.length > 0) ||
+                                          (currentForm.sections && currentForm.sections.length > 0);
+                if (currentForm.id !== formId && currentHasContent) {
                     saveToDraftForms(currentForm);
                 }
 
@@ -781,7 +800,9 @@
         try {
             // Save current form if has content
             const currentForm = getForm();
-            if (currentForm.questions && currentForm.questions.length > 0) {
+            const hasContent = (currentForm.questions && currentForm.questions.length > 0) ||
+                               (currentForm.sections && currentForm.sections.length > 0);
+            if (hasContent) {
                 saveToDraftForms(currentForm);
             }
 
