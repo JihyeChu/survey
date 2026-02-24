@@ -337,6 +337,7 @@
     color: var(--text-secondary);
     line-height: 1.6;
     margin: 0;
+    white-space: pre-wrap;
     word-wrap: break-word;
 }
 
@@ -461,6 +462,8 @@
     color: var(--text-secondary);
     margin: 8px 0 0 0;
     line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
 /* Question Attachment */

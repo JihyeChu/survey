@@ -266,6 +266,10 @@
 
         if (collectEmail) {
             elements.emailFieldContainer.style.display = 'block';
+            // 수정 모드: 기존 이메일 값을 입력 필드에 복원
+            if (respondentEmail) {
+                elements.respondentEmail.value = respondentEmail;
+            }
             elements.respondentEmail.addEventListener('input', (e) => {
                 respondentEmail = e.target.value;
                 updateProgress();
@@ -949,6 +953,21 @@
             fileList.innerHTML = '';
             const fileArray = Array.from(files);
 
+            // 파일 선택 즉시 크기 검증
+            const maxSizeMB = (fileConfig.maxFileSize / (1024 * 1024)).toFixed(0);
+            const oversized = fileArray.filter(file => file.size > fileConfig.maxFileSize);
+            if (oversized.length > 0) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'respond-error-message';
+                errorDiv.textContent = `파일 크기 초과: 최대 ${maxSizeMB}MB까지 업로드 가능합니다. (${oversized.map(f => f.name).join(', ')})`;
+                fileList.appendChild(errorDiv);
+                // 초과 파일은 저장하지 않고 input 초기화
+                e.target.value = '';
+                responses[questionId] = null;
+                updateProgress();
+                return;
+            }
+
             if (fileArray.length > 0) {
                 const ul = document.createElement('ul');
                 fileArray.forEach((file) => {
@@ -982,7 +1001,11 @@
 
         // 이전에 선택한 파일 목록 복원 표시 (input 값은 보안상 복원 불가)
         const savedFiles = responses[questionId] && responses[questionId].files;
+        // 수정 모드: 서버에서 불러온 업로드 파일 메타데이터 배열
+        const uploadedMetadata = Array.isArray(responses[questionId]) ? responses[questionId] : null;
+
         if (savedFiles && savedFiles.length > 0) {
+            // 새로 선택한 파일 목록 표시 (File 객체)
             const ul = document.createElement('ul');
             savedFiles.forEach((file) => {
                 const li = document.createElement('li');
@@ -995,6 +1018,25 @@
                 fileSize.className = 'respond-file-size';
                 fileSize.textContent = formatFileSize(file.size);
                 li.appendChild(fileSize);
+                ul.appendChild(li);
+            });
+            fileList.appendChild(ul);
+        } else if (uploadedMetadata && uploadedMetadata.length > 0) {
+            // 수정 모드: 기존 응답에서 불러온 업로드된 파일 메타데이터 표시
+            const ul = document.createElement('ul');
+            uploadedMetadata.forEach((meta) => {
+                const li = document.createElement('li');
+                li.className = 'respond-file-item';
+                const fileName = document.createElement('span');
+                fileName.className = 'respond-file-name';
+                fileName.textContent = meta.originalFilename || meta.storedFilename || '파일';
+                li.appendChild(fileName);
+                if (meta.fileSize) {
+                    const fileSize = document.createElement('span');
+                    fileSize.className = 'respond-file-size';
+                    fileSize.textContent = formatFileSize(meta.fileSize);
+                    li.appendChild(fileSize);
+                }
                 ul.appendChild(li);
             });
             fileList.appendChild(ul);
@@ -1117,7 +1159,11 @@
             showSuccessScreen();
         } catch (error) {
             console.error('Error submitting responses:', error);
-            showError('제출에 실패했습니다. 다시 시도해주세요.');
+            if (error.message && error.message.includes('HTTP 403')) {
+                showError('응답 수정이 허용되지 않은 설문입니다.');
+            } else {
+                showError('제출에 실패했습니다. 다시 시도해주세요.');
+            }
             elements.submitBtn.disabled = false;
             elements.submitBtnText.textContent = '제출';
         }
@@ -1295,10 +1341,6 @@
             });
         });
 
-        if (oversizedFiles.length > 0) {
-            alert(`파일 크기 제한을 초과하여 제출할 수 없습니다.\n\n${oversizedFiles.join('\n')}\n\n파일을 교체하거나 삭제 후 다시 시도해주세요.`);
-        }
-
         return errors;
     }
 
@@ -1385,7 +1427,7 @@
 
         if (!response.ok) {
             const error = await response.json().catch(() => ({}));
-            throw new Error(error.message || 'Submit failed');
+            throw new Error(error.message || `Submit failed (HTTP ${response.status})`);
         }
 
         return await response.json();
@@ -1447,9 +1489,10 @@
             elements.successMessage.textContent = '감사합니다. 귀하의 응답이 기록되었습니다.';
         }
 
-        // responseId가 있으면 항상 "응답 수정하기" 버튼 표시
+        // allowResponseEdit이 활성화된 경우에만 "응답 수정하기" 버튼 표시
         elements.successActions.innerHTML = '';
-        if (responseId) {
+        const allowEdit = formData.settings && formData.settings.allowResponseEdit;
+        if (responseId && allowEdit) {
             const formId = getFormIdFromUrl();
 
             const editButton = document.createElement('button');
