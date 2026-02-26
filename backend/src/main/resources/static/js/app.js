@@ -1567,11 +1567,14 @@
             block.appendChild(title);
 
             if (q.type === 'multiple-choice' || q.type === 'checkbox') {
-                // 선택지별 카운트
+                // 선택지별 카운트 (빈 응답 제외)
+                const filledAnswers = responses
+                    .map(r => (r.answers || []).find(a => Number(a.questionId) === Number(q.id)))
+                    .filter(a => a && a.value != null && a.value !== '');
                 const countMap = {};
                 let totalSelections = 0;
 
-                answers.forEach(a => {
+                filledAnswers.forEach(a => {
                     let values = [];
                     try {
                         const parsed = JSON.parse(a.value);
@@ -1618,15 +1621,21 @@
                 block.appendChild(chart);
 
             } else if (q.type === 'short-text') {
-                // 응답 리스트
+                // 응답 리스트 — 미응답도 포함하여 전체 제출 수와 일치시킴
                 const list = document.createElement('ul');
                 list.className = 'stats-text-list';
-                if (answers.length === 0) {
+                if (responses.length === 0) {
                     list.innerHTML = '<li class="stats-text-empty">응답 없음</li>';
                 } else {
-                    answers.forEach(a => {
+                    responses.forEach(r => {
+                        const answer = (r.answers || []).find(a => Number(a.questionId) === Number(q.id));
                         const li = document.createElement('li');
-                        li.textContent = String(a.value);
+                        if (!answer || answer.value == null || answer.value === '') {
+                            li.className = 'stats-text-no-answer';
+                            li.textContent = '(미응답)';
+                        } else {
+                            li.textContent = String(answer.value);
+                        }
                         list.appendChild(li);
                     });
                 }

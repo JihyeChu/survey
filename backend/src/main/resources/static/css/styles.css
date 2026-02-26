@@ -3187,3 +3187,8 @@ html, body {
     font-style: italic;
 }
 
+.stats-text-no-answer {
+    color: #bdbdbd;
+    font-style: italic;
+}
+
