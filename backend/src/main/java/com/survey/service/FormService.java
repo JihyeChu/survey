@@ -39,6 +39,14 @@ public class FormService {
     private final EntityManager entityManager;
     private final FileStorageService fileStorageService;
 
+    private static final java.util.Set<String> DISABLED_QUESTION_TYPES = java.util.Set.of("file-upload", "linear-scale", "date");
+
+    private void validateQuestionType(QuestionRequest qReq) {
+        if (qReq.getType() != null && DISABLED_QUESTION_TYPES.contains(qReq.getType())) {
+            throw new UnsupportedOperationException("'" + qReq.getType() + "' 질문 유형은 현재 지원하지 않습니다.");
+        }
+    }
+
     private String convertConfig(QuestionRequest qReq) {
         if (qReq.getConfig() == null) return null;
         try {
@@ -62,6 +70,8 @@ public class FormService {
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .settings(settingsJson)
+                .startAt(request.getStartAt())
+                .endAt(request.getEndAt())
                 .build();
 
         Form savedForm = formRepository.save(form);
@@ -81,6 +91,7 @@ public class FormService {
                 // 섹션 내 질문 생성
                 if (sReq.getQuestions() != null && !sReq.getQuestions().isEmpty()) {
                     for (QuestionRequest qReq : sReq.getQuestions()) {
+                        validateQuestionType(qReq);
                         Question question = Question.builder()
                                 .form(savedForm)
                                 .section(savedSection)
@@ -104,6 +115,7 @@ public class FormService {
         // 섹션 없는 질문 생성 (기본 동작)
         if (request.getQuestions() != null && !request.getQuestions().isEmpty()) {
             for (QuestionRequest qReq : request.getQuestions()) {
+                validateQuestionType(qReq);
                 Question question = Question.builder()
                         .form(savedForm)
                         .type(qReq.getType())
@@ -184,7 +196,7 @@ public class FormService {
         entityManager.clear();
 
         // 폼 업데이트 (네이티브 쿼리로)
-        formRepository.updateFormById(id, request.getTitle(), request.getDescription() != null ? request.getDescription() : "", settingsJson);
+        formRepository.updateFormById(id, request.getTitle(), request.getDescription() != null ? request.getDescription() : "", settingsJson, request.getStartAt(), request.getEndAt());
         entityManager.flush();
         entityManager.clear();
 
@@ -205,7 +217,7 @@ public class FormService {
                 if (sReq.getQuestions() != null && !sReq.getQuestions().isEmpty()) {
                     for (int qIdx = 0; qIdx < sReq.getQuestions().size(); qIdx++) {
                         QuestionRequest qReq = sReq.getQuestions().get(qIdx);
-
+                        validateQuestionType(qReq);
                         Question question = new Question();
                         question.setForm(formRepository.getReferenceById(id));
                         question.setSection(savedSection);
@@ -229,7 +241,7 @@ public class FormService {
         if (request.getQuestions() != null && !request.getQuestions().isEmpty()) {
             for (int qIdx = 0; qIdx < request.getQuestions().size(); qIdx++) {
                 QuestionRequest qReq = request.getQuestions().get(qIdx);
-
+                validateQuestionType(qReq);
                 Question question = new Question();
                 question.setForm(formRepository.getReferenceById(id));
                 question.setType(qReq.getType());

@@ -9,6 +9,11 @@
     const API_BASE_URL = '/api';
 
     // ========================================================
+    // CONSTANTS
+    // ========================================================
+    const DISABLED_TYPES = ['file-upload', 'linear-scale', 'date'];
+
+    // ========================================================
     // DOM ELEMENTS
     // ========================================================
     const elements = {
@@ -100,6 +105,9 @@
 
             renderForm();
             setupEventListeners();
+
+            // 설문 기간 체크 (renderForm 이후 배너 삽입 + 제출 차단)
+            checkSurveyPeriod();
         } catch (error) {
             console.error('Error initializing form:', error);
             showError('폼을 불러오는 데 실패했습니다. 다시 시도해주세요.');
@@ -143,6 +151,60 @@
             console.error('Error loading form:', error);
             throw new Error('폼을 불러오지 못했습니다.');
         }
+    }
+
+    /**
+     * 설문 기간 체크
+     * @returns {boolean} true면 응답 가능, false면 불가
+     */
+    function checkSurveyPeriod() {
+        if (!formData) return true;
+
+        const now = new Date();
+        const startAt = formData.startAt ? new Date(formData.startAt) : null;
+        const endAt = formData.endAt ? new Date(formData.endAt) : null;
+
+        let shouldShowNoticeBox = false;
+        let noticeMessage = '';
+
+        if (startAt && now < startAt) {
+            shouldShowNoticeBox = true;
+            noticeMessage = '아직 설문 시작 전입니다.\n시작 시간 이후 참여 가능합니다.';
+        } else if (endAt && now > endAt) {
+            shouldShowNoticeBox = true;
+            noticeMessage = '설문이 종료되었습니다.\n참여가 불가능합니다.';
+        }
+
+        // 설문 시작 전/종료 후: 질문 미노출 + 중앙 안내 박스 표시
+        if (shouldShowNoticeBox) {
+            elements.questionsContainer.style.display = 'none';
+            elements.emailFieldContainer.style.display = 'none';
+            elements.submitBtn.style.display = 'none';
+
+            // 섹션 네비게이션 (이전/다음 버튼)도 숨김 - questionsContainer 부모에 위치
+            const sectionNav = elements.questionsContainer.parentElement
+                ? elements.questionsContainer.parentElement.querySelector('.respond-section-nav')
+                : null;
+            if (sectionNav) sectionNav.style.display = 'none';
+
+            const centerWrapper = document.createElement('div');
+            centerWrapper.className = 'survey-center-wrapper';
+
+            const noticeBox = document.createElement('div');
+            noticeBox.className = 'survey-notice-box';
+
+            noticeMessage.split('\n').forEach((line, i) => {
+                const p = document.createElement('p');
+                p.className = i === 0 ? 'survey-notice-title' : 'survey-notice-text';
+                p.textContent = line;
+                noticeBox.appendChild(p);
+            });
+
+            centerWrapper.appendChild(noticeBox);
+            elements.formContainer.appendChild(centerWrapper);
+            return;
+        }
+
     }
 
     /**
@@ -284,8 +346,10 @@
         elements.questionsContainer.innerHTML = '';
 
         const questionList = questions || formData.questions || [];
+        // DISABLED 유형 필터링
+        const filteredQuestions = questionList.filter(q => !DISABLED_TYPES.includes(q.type));
         // order 또는 orderIndex 필드 기준으로 정렬 (order 우선)
-        const sortedQuestions = [...questionList].sort((a, b) => {
+        const sortedQuestions = [...filteredQuestions].sort((a, b) => {
             const aOrder = a.order !== undefined ? a.order : (a.orderIndex || 0);
             const bOrder = b.order !== undefined ? b.order : (b.orderIndex || 0);
             return aOrder - bOrder;
@@ -387,7 +451,9 @@
 
         // 섹션의 질문들을 정렬 (order 또는 orderIndex 기준)
         const sectionQuestions = section.questions || [];
-        sectionQuestions.sort((a, b) => {
+        // DISABLED 유형 필터링
+        const filteredSectionQuestions = sectionQuestions.filter(q => !DISABLED_TYPES.includes(q.type));
+        filteredSectionQuestions.sort((a, b) => {
             const aOrder = a.order !== undefined ? a.order : (a.orderIndex || 0);
             const bOrder = b.order !== undefined ? b.order : (b.orderIndex || 0);
             return aOrder - bOrder;
@@ -397,7 +463,7 @@
         elements.questionsContainer.innerHTML = '';
         elements.questionsContainer.appendChild(sectionHeaderContainer);
 
-        sectionQuestions.forEach((question, index) => {
+        filteredSectionQuestions.forEach((question, index) => {
             const questionCard = createQuestionCard(question, index);
             elements.questionsContainer.appendChild(questionCard);
         });
@@ -475,7 +541,10 @@
     function validateSection(sectionQuestions) {
         const errors = [];
 
-        sectionQuestions.forEach((question) => {
+        // DISABLED 유형 필터링
+        const filteredQuestions = sectionQuestions.filter(q => !DISABLED_TYPES.includes(q.type));
+
+        filteredQuestions.forEach((question) => {
             if (!question.required) return;
 
             const value = responses[question.id];
@@ -1096,6 +1165,19 @@
     async function handleSubmit(e) {
         e.preventDefault();
 
+        // 제출 시점에 설문 기간 재확인
+        if (formData) {
+            const now = new Date();
+            if (formData.endAt && now > new Date(formData.endAt)) {
+                alert('본 설문은 종료된 설문입니다.');
+                return;
+            }
+            if (formData.startAt && now < new Date(formData.startAt)) {
+                alert('설문이 아직 시작되지 않았습니다.');
+                return;
+            }
+        }
+
         clearAllErrors();
 
         // 섹션이 있는 경우: 현재 섹션 검증 또는 전체 폼 검증
@@ -1218,7 +1300,9 @@
     // ========================================================
     function validateResponses() {
         const errors = [];
-        const questions = getAllQuestions(formData);
+        let questions = getAllQuestions(formData);
+        // DISABLED 유형 필터링
+        questions = questions.filter(q => !DISABLED_TYPES.includes(q.type));
         const settings = formData.settings || {};
 
         // 이메일 필드 검증
@@ -1437,7 +1521,9 @@
     // UI UPDATES
     // ========================================================
     function updateProgress() {
-        const questions = getAllQuestions(formData);
+        let questions = getAllQuestions(formData);
+        // DISABLED 유형 필터링
+        questions = questions.filter(q => !DISABLED_TYPES.includes(q.type));
         const settings = formData.settings || {};
         const requiredQuestions = questions.filter(q => q.required);
 

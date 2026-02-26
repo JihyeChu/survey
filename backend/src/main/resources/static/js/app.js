@@ -128,6 +128,8 @@
         publishedId: null,          // Server-side ID when published
         publishedAt: null,          // Publish timestamp
         originalFormId: null,       // Reference to original published form (for draft copies)
+        startAt: null,              // Survey start datetime
+        endAt: null,                // Survey end datetime
         questions: [],
         sections: [],              // Sections array
         settings: {
@@ -733,7 +735,7 @@
         const currentForm = getForm();
         const hasContent = (currentForm.questions && currentForm.questions.length > 0) ||
                            (currentForm.sections && currentForm.sections.length > 0);
-        if (hasContent) {
+        if (hasContent && currentForm.status !== FORM_STATUS.PUBLISHED) {
             saveToDraftForms(currentForm);
         }
 
@@ -751,6 +753,27 @@
         updateSyncStatus();
         updateReadOnlyBanner();
         restoreSettings();
+
+        // 응답 뷰 초기화: 이전 폼의 응답이 응답 탭에 남아 있지 않도록
+        const shareUrlSection = document.getElementById('share-url-section');
+        const notPublished = document.getElementById('responses-not-published');
+        const emptyState = document.getElementById('responses-empty');
+        const tableContainer = document.getElementById('responses-table-container');
+        const summaryCards = document.getElementById('responses-summary-cards');
+        const statsContainer = document.getElementById('responses-stats-container');
+        const exportExcelBtn = document.getElementById('export-excel-btn');
+        const exportCsvBtn = document.getElementById('export-csv-btn');
+        const countElement = document.querySelector('.response-count');
+
+        if (shareUrlSection) shareUrlSection.style.display = 'none';
+        if (notPublished) notPublished.style.display = 'block';
+        if (emptyState) emptyState.style.display = 'none';
+        if (tableContainer) { tableContainer.style.display = 'none'; tableContainer.innerHTML = ''; }
+        if (summaryCards) { summaryCards.style.display = 'none'; summaryCards.innerHTML = ''; }
+        if (statsContainer) { statsContainer.style.display = 'none'; statsContainer.innerHTML = ''; }
+        if (exportExcelBtn) exportExcelBtn.style.display = 'none';
+        if (exportCsvBtn) exportCsvBtn.style.display = 'none';
+        if (countElement) countElement.textContent = '0';
     }
 
     /**
@@ -768,7 +791,7 @@
                 const currentForm = getForm();
                 const currentHasContent = (currentForm.questions && currentForm.questions.length > 0) ||
                                           (currentForm.sections && currentForm.sections.length > 0);
-                if (currentForm.id !== formId && currentHasContent) {
+                if (currentForm.id !== formId && currentHasContent && currentForm.status !== FORM_STATUS.PUBLISHED) {
                     saveToDraftForms(currentForm);
                 }
 
@@ -802,7 +825,7 @@
             const currentForm = getForm();
             const hasContent = (currentForm.questions && currentForm.questions.length > 0) ||
                                (currentForm.sections && currentForm.sections.length > 0);
-            if (hasContent) {
+            if (hasContent && currentForm.status !== FORM_STATUS.PUBLISHED) {
                 saveToDraftForms(currentForm);
             }
 
@@ -1040,16 +1063,18 @@
      * Remove form from draft forms list
      * @param {string} formId - Form ID to remove
      */
-    function deleteDraftForm(formId) {
+    function deleteDraftForm(formId, skipCurrentFormReset = false) {
         try {
             const drafts = getDraftForms();
             const filtered = drafts.filter(d => d.id !== formId);
             localStorage.setItem(DRAFT_FORMS_KEY, JSON.stringify(filtered));
 
-            // If deleting current form, create new
-            const currentForm = getForm();
-            if (currentForm.id === formId) {
-                createNewForm();
+            // If deleting current form, create new (skip when publishing to keep current state)
+            if (!skipCurrentFormReset) {
+                const currentForm = getForm();
+                if (currentForm.id === formId) {
+                    createNewForm();
+                }
             }
         } catch (error) {
             console.error('Failed to delete draft form:', error);
@@ -1154,6 +1179,10 @@
         const emptyState = document.getElementById('responses-empty');
         const tableContainer = document.getElementById('responses-table-container');
         const countElement = document.querySelector('.response-count');
+        const summaryCards = document.getElementById('responses-summary-cards');
+        const statsContainer = document.getElementById('responses-stats-container');
+        const exportExcelBtn = document.getElementById('export-excel-btn');
+        const exportCsvBtn = document.getElementById('export-csv-btn');
 
         // 서버에서 유효한 폼 ID 확인
         let formId = null;
@@ -1167,13 +1196,8 @@
                         formId = form.publishedId;
                     }
                 }
-                // formId가 없으면 제목으로 매칭 또는 첫 번째 폼 사용
-                if (!formId) {
-                    const matchingForm = serverForms.find(f => f.title === form.title) || serverForms[0];
-                    formId = matchingForm.id;
-                    form.publishedId = formId;
-                    saveForm(form);
-                }
+                // publishedId가 없거나 서버에서 찾을 수 없으면 게시되지 않은 상태로 처리
+                // (제목/순서 기반 매칭 제거 - 다른 폼의 응답이 조회되는 버그 방지)
             }
         } catch (e) {
             console.error('Failed to fetch server forms:', e);
@@ -1186,6 +1210,9 @@
             if (emptyState) emptyState.style.display = 'none';
             if (tableContainer) tableContainer.style.display = 'none';
             if (countElement) countElement.textContent = '0';
+            if (summaryCards) summaryCards.style.display = 'none';
+            if (exportExcelBtn) exportExcelBtn.style.display = 'none';
+            if (exportCsvBtn) exportCsvBtn.style.display = 'none';
             return;
         }
 
@@ -1215,16 +1242,33 @@
             // 응답 개수 업데이트
             if (countElement) countElement.textContent = responses.length;
 
+            // 요약 카드 렌더링 (게시된 경우 항상 표시)
+            renderResponsesSummaryCards(responses, serverForm, summaryCards);
+
             if (responses.length === 0) {
                 if (notPublished) notPublished.style.display = 'none';
                 if (emptyState) emptyState.style.display = 'block';
                 if (tableContainer) tableContainer.style.display = 'none';
+                if (statsContainer) statsContainer.style.display = 'none';
+                if (exportExcelBtn) exportExcelBtn.style.display = 'none';
+                if (exportCsvBtn) exportCsvBtn.style.display = 'none';
             } else {
                 if (notPublished) notPublished.style.display = 'none';
                 if (emptyState) emptyState.style.display = 'none';
                 if (tableContainer) tableContainer.style.display = 'block';
                 // 서버 폼 데이터 사용 (정확한 질문 ID 매칭)
                 renderResponsesTable(responses, serverForm);
+                renderResponsesStats(responses, serverForm, statsContainer);
+
+                // 내보내기 버튼 표시 및 이벤트 연결
+                if (exportExcelBtn) {
+                    exportExcelBtn.style.display = 'flex';
+                    exportExcelBtn.onclick = () => exportResponsesToExcel(responses, serverForm);
+                }
+                if (exportCsvBtn) {
+                    exportCsvBtn.style.display = 'flex';
+                    exportCsvBtn.onclick = () => exportResponsesToCsv(responses, serverForm);
+                }
             }
         } catch (error) {
             console.error('Failed to load responses:', error);
@@ -1236,6 +1280,361 @@
             }
             if (tableContainer) tableContainer.style.display = 'none';
         }
+    }
+
+    /**
+     * 응답 요약 카드 렌더링
+     */
+    function renderResponsesSummaryCards(responses, serverForm, container) {
+        if (!container) return;
+
+        const totalCount = responses.length;
+        const latestResponse = responses.length > 0
+            ? responses.reduce((a, b) => new Date(a.submittedAt) > new Date(b.submittedAt) ? a : b)
+            : null;
+        const latestTime = latestResponse
+            ? new Date(latestResponse.submittedAt).toLocaleString('ko-KR')
+            : '-';
+
+        // 진행 기간 표시
+        let periodText = '기간 제한 없음';
+        const form = getForm();
+        if (form.startAt || form.endAt) {
+            const start = form.startAt ? new Date(form.startAt).toLocaleDateString('ko-KR') : '시작일 미설정';
+            const end = form.endAt ? new Date(form.endAt).toLocaleDateString('ko-KR') : '종료일 미설정';
+            periodText = `${start} ~ ${end}`;
+        }
+
+        container.style.display = 'flex';
+        container.innerHTML = `
+            <div class="summary-card">
+                <div class="summary-card-value">${totalCount}</div>
+                <div class="summary-card-label">총 응답 수</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-card-value summary-card-value-sm">${latestTime}</div>
+                <div class="summary-card-label">최근 응답 시간</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-card-value summary-card-value-sm">${periodText}</div>
+                <div class="summary-card-label">진행 기간</div>
+            </div>
+        `;
+    }
+
+    /**
+     * 응답 상세 모달 표시
+     */
+    function showResponseDetailModal(response, serverForm) {
+        const modal = document.getElementById('response-detail-modal');
+        const body = document.getElementById('response-detail-body');
+        if (!modal || !body) return;
+
+        let questions = [];
+        if (serverForm.sections && serverForm.sections.length > 0) {
+            serverForm.sections.forEach(s => {
+                if (s.questions) questions = questions.concat(s.questions);
+            });
+        } else {
+            questions = serverForm.questions || [];
+        }
+        questions = questions.sort((a, b) => {
+            const orderA = a.orderIndex !== undefined ? a.orderIndex : (a.order || 0);
+            const orderB = b.orderIndex !== undefined ? b.orderIndex : (b.order || 0);
+            return orderA - orderB;
+        });
+
+        const answers = response.answers || [];
+        const submittedAt = new Date(response.submittedAt).toLocaleString('ko-KR');
+
+        let html = `<div class="response-detail-meta">
+            <span>제출 시간: ${submittedAt}</span>
+            ${response.email ? `<span>이메일: ${escapeHtml(response.email)}</span>` : ''}
+        </div>`;
+
+        html += '<div class="response-detail-answers">';
+        questions.forEach((q, idx) => {
+            const answer = answers.find(a => Number(a.questionId) === Number(q.id));
+            let displayValue = '<span class="no-answer">응답 없음</span>';
+
+            if (answer && answer.value != null && answer.value !== '') {
+                if (q.type === 'file-upload') {
+                    try {
+                        const files = JSON.parse(answer.value);
+                        const fileList = Array.isArray(files) ? files : [files];
+                        displayValue = fileList.map(f =>
+                            `<a href="javascript:downloadFileById(${f.id}, '${escapeHtml(f.originalFilename)}')" class="file-download-link">${escapeHtml(f.originalFilename)}</a>`
+                        ).join('<br>');
+                    } catch (e) {
+                        displayValue = escapeHtml(String(answer.value));
+                    }
+                } else {
+                    try {
+                        const parsed = JSON.parse(answer.value);
+                        if (Array.isArray(parsed)) {
+                            displayValue = escapeHtml(parsed.join(', '));
+                        } else {
+                            displayValue = escapeHtml(String(answer.value));
+                        }
+                    } catch (e) {
+                        displayValue = escapeHtml(String(answer.value));
+                    }
+                }
+            }
+
+            html += `
+                <div class="response-detail-item">
+                    <div class="response-detail-question">Q${idx + 1}. ${escapeHtml(q.title || '질문')}</div>
+                    <div class="response-detail-answer">${displayValue}</div>
+                </div>`;
+        });
+        html += '</div>';
+
+        body.innerHTML = html;
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden', 'false');
+    }
+
+    /**
+     * 응답 데이터를 표 형식으로 정규화
+     * @returns { headers: string[], rows: string[][] }
+     */
+    function buildExportData(responses, form) {
+        let questions = [];
+        if (form.sections && form.sections.length > 0) {
+            form.sections.forEach(s => { if (s.questions) questions = questions.concat(s.questions); });
+        } else {
+            questions = form.questions || [];
+        }
+        questions = questions.sort((a, b) => {
+            const oa = a.orderIndex !== undefined ? a.orderIndex : (a.order || 0);
+            const ob = b.orderIndex !== undefined ? b.orderIndex : (b.order || 0);
+            return oa - ob;
+        });
+
+        let collectEmail = false;
+        if (form.settings) {
+            try {
+                const s = typeof form.settings === 'string' ? JSON.parse(form.settings) : form.settings;
+                collectEmail = s.collectEmail === true;
+            } catch (e) {}
+        }
+
+        // 헤더
+        const headers = ['응답ID'];
+        if (collectEmail) headers.push('이메일');
+        headers.push('제출 시간');
+        questions.forEach(q => headers.push(q.title || '질문'));
+
+        // 행
+        const rows = responses.map(response => {
+            const row = [String(response.id)];
+            if (collectEmail) row.push(response.email || '');
+            row.push(new Date(response.submittedAt).toLocaleString('ko-KR'));
+
+            questions.forEach(q => {
+                const answer = (response.answers || []).find(a => Number(a.questionId) === Number(q.id));
+                if (!answer || answer.value == null || answer.value === '') {
+                    row.push('');
+                    return;
+                }
+                try {
+                    const parsed = JSON.parse(answer.value);
+                    row.push(Array.isArray(parsed) ? parsed.join(', ') : String(answer.value));
+                } catch (e) {
+                    row.push(String(answer.value));
+                }
+            });
+
+            return row;
+        });
+
+        return { headers, rows, questions };
+    }
+
+    /**
+     * Excel(.xlsx) 내보내기 — SheetJS 사용
+     */
+    function exportResponsesToExcel(responses, form) {
+        if (typeof XLSX === 'undefined') {
+            alert('Excel 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+
+        const { headers, rows } = buildExportData(responses, form);
+        const formTitle = form.title || '설문지';
+
+        // 1행: 설문지 제목, 2행: 빈 행, 3행: 헤더, 4행~: 데이터
+        const titleRow = [formTitle, ...Array(headers.length - 1).fill('')];
+        const blankRow = Array(headers.length).fill('');
+        const sheetData = [titleRow, blankRow, headers, ...rows];
+
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+        // 제목 행 병합 (A1 ~ 마지막 열)
+        ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
+
+        // 열 너비 자동 설정
+        ws['!cols'] = headers.map((h, i) => ({
+            wch: Math.max(h.length, ...rows.map(r => (r[i] || '').length), 10)
+        }));
+
+        const safeTitle = formTitle.replace(/[/\\?*[\]:]/g, '_');
+        XLSX.utils.book_append_sheet(wb, ws, '응답');
+        XLSX.writeFile(wb, `${safeTitle}_응답.xlsx`);
+    }
+
+    /**
+     * CSV 내보내기 — Google Sheets, Excel 호환
+     */
+    function exportResponsesToCsv(responses, form) {
+        const { headers, rows } = buildExportData(responses, form);
+        const formTitle = form.title || '설문지';
+
+        const escapeCell = val => {
+            const str = String(val ?? '');
+            return str.includes(',') || str.includes('"') || str.includes('\n')
+                ? `"${str.replace(/"/g, '""')}"`
+                : str;
+        };
+
+        // 1행: 설문지 제목, 2행: 빈 행, 3행: 헤더, 4행~: 데이터
+        const titleRow = [formTitle, ...Array(headers.length - 1).fill('')];
+        const blankRow = Array(headers.length).fill('');
+        const csvContent = [titleRow, blankRow, headers, ...rows]
+            .map(row => row.map(escapeCell).join(','))
+            .join('\n');
+
+        // BOM 추가 (한글 깨짐 방지)
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const safeTitle = formTitle.replace(/[/\\?*[\]:]/g, '_');
+        link.href = url;
+        link.download = `${safeTitle}_응답.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    /**
+     * 응답 통계 렌더링
+     * - 객관식(multiple-choice): 선택지별 응답 수
+     * - 체크박스(checkbox): 항목별 선택 비율
+     * - 단답형(short-text): 응답 리스트
+     */
+    function renderResponsesStats(responses, form, container) {
+        if (!container) return;
+
+        let questions = [];
+        if (form.sections && form.sections.length > 0) {
+            form.sections.forEach(s => { if (s.questions) questions = questions.concat(s.questions); });
+        } else {
+            questions = form.questions || [];
+        }
+
+        // 통계 대상 유형만
+        const statTypes = ['multiple-choice', 'checkbox', 'short-text'];
+        const statQuestions = questions
+            .filter(q => statTypes.includes(q.type))
+            .sort((a, b) => {
+                const oa = a.orderIndex !== undefined ? a.orderIndex : (a.order || 0);
+                const ob = b.orderIndex !== undefined ? b.orderIndex : (b.order || 0);
+                return oa - ob;
+            });
+
+        if (statQuestions.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+        container.innerHTML = '<h3 class="stats-section-title">응답 통계</h3>';
+
+        statQuestions.forEach((q, idx) => {
+            const answers = responses
+                .map(r => (r.answers || []).find(a => Number(a.questionId) === Number(q.id)))
+                .filter(a => a && a.value != null && a.value !== '');
+
+            const block = document.createElement('div');
+            block.className = 'stats-question-block';
+
+            const title = document.createElement('div');
+            title.className = 'stats-question-title';
+            title.textContent = `Q${idx + 1}. ${q.title || '질문'}`;
+            block.appendChild(title);
+
+            if (q.type === 'multiple-choice' || q.type === 'checkbox') {
+                // 선택지별 카운트
+                const countMap = {};
+                let totalSelections = 0;
+
+                answers.forEach(a => {
+                    let values = [];
+                    try {
+                        const parsed = JSON.parse(a.value);
+                        values = Array.isArray(parsed) ? parsed : [String(a.value)];
+                    } catch (e) {
+                        values = [String(a.value)];
+                    }
+                    values.forEach(v => {
+                        countMap[v] = (countMap[v] || 0) + 1;
+                        totalSelections++;
+                    });
+                });
+
+                // 선택지 순서 기준 정렬 (config.options 기준)
+                let optionOrder = [];
+                if (q.config) {
+                    try {
+                        const cfg = typeof q.config === 'string' ? JSON.parse(q.config) : q.config;
+                        if (cfg.options) optionOrder = cfg.options.map(o => o.label);
+                    } catch (e) {}
+                }
+
+                const allKeys = optionOrder.length > 0
+                    ? [...new Set([...optionOrder, ...Object.keys(countMap)])]
+                    : Object.keys(countMap);
+
+                const chart = document.createElement('div');
+                chart.className = 'stats-bar-chart';
+
+                allKeys.forEach(key => {
+                    const count = countMap[key] || 0;
+                    const pct = totalSelections > 0 ? Math.round((count / responses.length) * 100) : 0;
+
+                    chart.innerHTML += `
+                        <div class="stats-bar-row">
+                            <span class="stats-bar-label">${escapeHtml(key)}</span>
+                            <div class="stats-bar-wrap">
+                                <div class="stats-bar-fill" style="width: ${pct}%"></div>
+                            </div>
+                            <span class="stats-bar-count">${count}명 (${pct}%)</span>
+                        </div>`;
+                });
+
+                block.appendChild(chart);
+
+            } else if (q.type === 'short-text') {
+                // 응답 리스트
+                const list = document.createElement('ul');
+                list.className = 'stats-text-list';
+                if (answers.length === 0) {
+                    list.innerHTML = '<li class="stats-text-empty">응답 없음</li>';
+                } else {
+                    answers.forEach(a => {
+                        const li = document.createElement('li');
+                        li.textContent = String(a.value);
+                        list.appendChild(li);
+                    });
+                }
+                block.appendChild(list);
+            }
+
+            container.appendChild(block);
+        });
     }
 
     /**
@@ -1286,7 +1685,7 @@
             const answers = response.answers || [];
 
             return `
-                <tr data-response-id="${response.id}">
+                <tr data-response-id="${response.id}" class="response-row-clickable" title="클릭하여 상세 보기">
                     ${collectEmail ? `<td>${escapeHtml(response.email || '-')}</td>` : ''}
                     <td class="response-timestamp">${submittedAt}</td>
                     ${questions.map(q => {
@@ -1330,6 +1729,17 @@
                 </tr>
             `;
         }).join('');
+
+        // 행 클릭 → 상세 모달
+        tbody.querySelectorAll('.response-row-clickable').forEach(row => {
+            row.addEventListener('click', (e) => {
+                // 파일 다운로드 링크 클릭은 모달 열지 않음
+                if (e.target.tagName === 'A') return;
+                const responseId = parseInt(row.dataset.responseId);
+                const response = responses.find(r => r.id === responseId);
+                if (response) showResponseDetailModal(response, form);
+            });
+        });
     }
 
     /**
@@ -1375,6 +1785,27 @@
         const refreshBtn = document.getElementById('refresh-responses-btn');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', loadAndRenderResponses);
+        }
+
+        // 응답 상세 모달 닫기
+        const responseDetailCloseBtn = document.getElementById('response-detail-close-btn');
+        if (responseDetailCloseBtn) {
+            responseDetailCloseBtn.addEventListener('click', () => {
+                const modal = document.getElementById('response-detail-modal');
+                if (modal) {
+                    modal.style.display = 'none';
+                    modal.setAttribute('aria-hidden', 'true');
+                }
+            });
+        }
+        const responseDetailModal = document.getElementById('response-detail-modal');
+        if (responseDetailModal) {
+            responseDetailModal.addEventListener('click', (e) => {
+                if (e.target === responseDetailModal) {
+                    responseDetailModal.style.display = 'none';
+                    responseDetailModal.setAttribute('aria-hidden', 'true');
+                }
+            });
         }
 
         // URL 복사 버튼
@@ -1446,6 +1877,32 @@
                 });
             }
         });
+
+        // 설문 시작/종료일 datetime 핸들러
+        const startAtEl = document.getElementById('setting-start-at');
+        if (startAtEl) {
+            startAtEl.addEventListener('change', (e) => {
+                updateFormDateTime('startAt', e.target.value || null);
+            });
+        }
+        const endAtEl = document.getElementById('setting-end-at');
+        if (endAtEl) {
+            endAtEl.addEventListener('change', (e) => {
+                updateFormDateTime('endAt', e.target.value || null);
+            });
+        }
+    }
+
+    /**
+     * Update form datetime field (startAt / endAt)
+     * @param {string} key - 'startAt' or 'endAt'
+     * @param {string|null} value - ISO datetime string or null
+     */
+    function updateFormDateTime(key, value) {
+        const form = getForm();
+        form[key] = value;
+        saveForm(form);
+        showSettingsNotification();
     }
 
     /**
@@ -1502,6 +1959,17 @@
                 element.checked = settings[settingKey];
             }
         });
+
+        // 시작/종료일 복원
+        const startAtEl = document.getElementById('setting-start-at');
+        if (startAtEl) {
+            // datetime-local input expects "YYYY-MM-DDTHH:mm" format
+            startAtEl.value = form.startAt ? form.startAt.substring(0, 16) : '';
+        }
+        const endAtEl = document.getElementById('setting-end-at');
+        if (endAtEl) {
+            endAtEl.value = form.endAt ? form.endAt.substring(0, 16) : '';
+        }
     }
 
     /**
@@ -1890,9 +2358,10 @@
                                     <div class="question-card-footer">
                                         <div class="option-group">
                                             <select class="question-type-dropdown" data-field="type" data-question-id="${question.id}">
-                                                ${Object.entries(QUESTION_TYPES).map(([key, label]) => `
-                                                    <option value="${key}" ${question.type === key ? 'selected' : ''}>${label}</option>
-                                                `).join('')}
+                                                ${Object.entries(QUESTION_TYPES)
+                                                    .filter(([key]) => !['file-upload', 'linear-scale', 'date'].includes(key))
+                                                    .map(([key, label]) => `<option value="${key}" ${question.type === key ? 'selected' : ''}>${label}</option>`)
+                                                    .join('')}
                                             </select>
                                         </div>
                                         <label class="toggle-required">
@@ -1980,9 +2449,10 @@
                     <div class="question-card-footer">
                         <div class="option-group">
                             <select class="question-type-dropdown" data-field="type" data-question-id="${question.id}">
-                                ${Object.entries(QUESTION_TYPES).map(([key, label]) => `
-                                    <option value="${key}" ${question.type === key ? 'selected' : ''}>${label}</option>
-                                `).join('')}
+                                ${Object.entries(QUESTION_TYPES)
+                                    .filter(([key]) => !['file-upload', 'linear-scale', 'date'].includes(key))
+                                    .map(([key, label]) => `<option value="${key}" ${question.type === key ? 'selected' : ''}>${label}</option>`)
+                                    .join('')}
                             </select>
                         </div>
                         <label class="toggle-required">
@@ -2855,10 +3325,10 @@
 
         // If not published, store file as base64 locally
         // localStorage has limited capacity (~5MB), base64 adds ~33% overhead
-        const MAX_LOCAL_ATTACHMENT_SIZE = 1 * 1024 * 1024; // 1MB
+        const MAX_LOCAL_ATTACHMENT_SIZE = 3 * 1024 * 1024; // 3MB
         if (file.size > MAX_LOCAL_ATTACHMENT_SIZE) {
             const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-            alert(`첨부파일이 너무 큽니다 (${sizeMB}MB).\n임시저장 중에는 1MB 이하의 파일만 첨부할 수 있습니다.\n\n폼을 먼저 게시한 후 첨부파일을 추가해주세요.`);
+            alert(`파일은 3MB 이하만 업로드 가능합니다 (현재: ${sizeMB}MB).`);
             return;
         }
 

@@ -1173,3 +1173,98 @@
         font-size: 13px;
     }
 }
+
+/* ========================================================
+   Survey status banner
+   ======================================================== */
+.survey-status-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.survey-status-active {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #c8e6c9;
+}
+
+.survey-status-pending {
+    background-color: #fff3e0;
+    color: #e65100;
+    border: 1px solid #ffe0b2;
+}
+
+.survey-status-ended {
+    background-color: #fce4ec;
+    color: #b71c1c;
+    border: 1px solid #f8bbd9;
+}
+
+/* Survey Disabled Overlay */
+.survey-disabled {
+    position: relative;
+}
+
+.survey-disabled::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(150, 150, 150, 0.6);
+    z-index: 10;
+}
+
+/* ========================================================
+   SURVEY TIME-RESTRICTED NOTICE BOX
+   ======================================================== */
+
+.survey-center-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px;
+    padding: 40px 24px;
+}
+
+.survey-notice-box {
+    background: white;
+    padding: 48px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    text-align: center;
+    max-width: 500px;
+}
+
+.survey-notice-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #202124;
+    margin: 0 0 12px 0;
+}
+
+.survey-notice-text {
+    font-size: 15px;
+    color: #5f6368;
+    margin: 0;
+    line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+    .survey-center-wrapper {
+        min-height: 300px;
+        padding: 24px 16px;
+    }
+
+    .survey-notice-box {
+        padding: 32px;
+    }
+
+    .survey-notice-title {
+        font-size: 18px;
+    }
+}

@@ -2914,3 +2914,276 @@ html, body {
     color: #f44336;
 }
 
+/* ========================================================
+   Settings datetime input
+   ======================================================== */
+.settings-datetime-input {
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 14px;
+    color: #202124;
+    background: #fff;
+    cursor: pointer;
+    min-width: 200px;
+}
+
+.settings-datetime-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.settings-option-vertical {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+/* ========================================================
+   Responses header actions
+   ======================================================== */
+.responses-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.export-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.15s ease;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.export-btn-excel {
+    background: #f0fff4;
+    color: #1a7f37;
+    border-color: #c6e8cc;
+}
+
+.export-btn-excel:hover {
+    background: #1a7f37;
+    color: #fff;
+    border-color: #1a7f37;
+}
+
+.export-btn-csv {
+    background: #f0f6ff;
+    color: #1155cc;
+    border-color: #c6d7f0;
+}
+
+.export-btn-csv:hover {
+    background: #1155cc;
+    color: #fff;
+    border-color: #1155cc;
+}
+
+/* ========================================================
+   Response summary cards
+   ======================================================== */
+.responses-summary-cards {
+    display: flex;
+    gap: 16px;
+    padding: 16px 0;
+    flex-wrap: wrap;
+}
+
+.summary-card {
+    background: #fff;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    padding: 16px 24px;
+    min-width: 150px;
+    flex: 1;
+    text-align: center;
+}
+
+.summary-card-value {
+    font-size: 28px;
+    font-weight: 500;
+    color: #202124;
+    line-height: 1.2;
+}
+
+.summary-card-value-sm {
+    font-size: 14px;
+    font-weight: 400;
+    word-break: break-word;
+}
+
+.summary-card-label {
+    font-size: 12px;
+    color: #5f6368;
+    margin-top: 4px;
+}
+
+/* ========================================================
+   Response table clickable rows
+   ======================================================== */
+.response-row-clickable {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.response-row-clickable:hover {
+    background-color: #f8f9fa;
+}
+
+/* ========================================================
+   Response detail modal
+   ======================================================== */
+.modal-container-wide {
+    max-width: 680px;
+    width: 90vw;
+}
+
+.response-detail-meta {
+    display: flex;
+    gap: 24px;
+    font-size: 13px;
+    color: #5f6368;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e0e0e0;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.response-detail-answers {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.response-detail-item {
+    border-left: 3px solid var(--primary-color);
+    padding-left: 12px;
+}
+
+.response-detail-question {
+    font-size: 13px;
+    color: #5f6368;
+    margin-bottom: 4px;
+}
+
+.response-detail-answer {
+    font-size: 15px;
+    color: #202124;
+    word-break: break-word;
+}
+
+.no-answer {
+    color: #bdbdbd;
+    font-style: italic;
+}
+
+/* ========================================================
+   Response statistics
+   ======================================================== */
+.responses-stats-container {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.stats-section-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: #202124;
+    margin: 0 0 20px;
+}
+
+.stats-question-block {
+    background: #fff;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.stats-question-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #202124;
+    margin-bottom: 14px;
+}
+
+/* 바 차트 */
+.stats-bar-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.stats-bar-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 90px;
+    align-items: center;
+    gap: 10px;
+}
+
+.stats-bar-label {
+    font-size: 13px;
+    color: #3c4043;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.stats-bar-wrap {
+    background: #f1f3f4;
+    border-radius: 4px;
+    height: 10px;
+    overflow: hidden;
+}
+
+.stats-bar-fill {
+    height: 100%;
+    background: var(--primary-color, #ff6b00);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    min-width: 2px;
+}
+
+.stats-bar-count {
+    font-size: 12px;
+    color: #5f6368;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* 단답형 목록 */
+.stats-text-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.stats-text-list li {
+    font-size: 13px;
+    color: #3c4043;
+    padding: 6px 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.stats-text-empty {
+    color: #bdbdbd;
+    font-style: italic;
+}
+

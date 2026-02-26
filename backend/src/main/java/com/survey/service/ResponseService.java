@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -59,6 +60,14 @@ public class ResponseService {
     public ResponseDto submitResponse(Long formId, ResponseRequest request) {
         Form form = formRepository.findById(formId)
                 .orElseThrow(() -> new IllegalArgumentException("Form not found with id: " + formId));
+
+        LocalDateTime now = LocalDateTime.now();
+        if (form.getStartAt() != null && now.isBefore(form.getStartAt())) {
+            throw new IllegalStateException("설문이 아직 시작되지 않았습니다.");
+        }
+        if (form.getEndAt() != null && now.isAfter(form.getEndAt())) {
+            throw new IllegalStateException("설문이 종료되었습니다.");
+        }
 
         Response response = Response.builder()
                 .form(form)
@@ -168,6 +177,15 @@ public class ResponseService {
 
         if (!isResponseEditAllowed(form)) {
             throw new IllegalStateException("Response edit is not allowed for this form");
+        }
+
+        // Validate form availability (time range check)
+        LocalDateTime now = LocalDateTime.now();
+        if (form.getStartAt() != null && now.isBefore(form.getStartAt())) {
+            throw new IllegalStateException("설문이 아직 시작되지 않았습니다.");
+        }
+        if (form.getEndAt() != null && now.isAfter(form.getEndAt())) {
+            throw new IllegalStateException("설문이 종료되었습니다.");
         }
 
         Response response = responseRepository.findByIdWithAnswers(responseId);

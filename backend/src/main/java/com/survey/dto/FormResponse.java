@@ -22,6 +22,8 @@ public class FormResponse {
     private String title;
     private String description;
     private String settings;
+    private LocalDateTime startAt;
+    private LocalDateTime endAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<SectionResponse> sections;
@@ -47,6 +49,8 @@ public class FormResponse {
                 .title(form.getTitle())
                 .description(form.getDescription())
                 .settings(form.getSettings())
+                .startAt(form.getStartAt())
+                .endAt(form.getEndAt())
                 .createdAt(form.getCreatedAt())
                 .updatedAt(form.getUpdatedAt())
                 .sections(sectionResponses)

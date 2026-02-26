@@ -103,16 +103,33 @@
                         </div>
                     </div>
 
+                    <!-- 응답 요약 카드 (게시 후 표시) -->
+                    <div class="responses-summary-cards" id="responses-summary-cards" style="display:none;"></div>
+
                     <div class="responses-header">
                         <div class="responses-summary">
                             <span class="response-count">0</span>
                             <span class="response-label">개의 응답</span>
                         </div>
-                        <button id="refresh-responses-btn" class="refresh-btn" title="새로고침">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-                            </svg>
-                        </button>
+                        <div class="responses-header-actions">
+                            <button id="export-excel-btn" class="export-btn export-btn-excel" title="Excel 다운로드" style="display:none;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2.5 13.5L14 13l-2.5 3.5L9 13l-2.5 3.5H5V7.5h2.5L10 11l2-3.5L14.5 11 17 7.5H19v9h-2.5z"/>
+                                </svg>
+                                Excel
+                            </button>
+                            <button id="export-csv-btn" class="export-btn export-btn-csv" title="CSV 다운로드 (Google Sheets 호환)" style="display:none;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                                </svg>
+                                CSV
+                            </button>
+                            <button id="refresh-responses-btn" class="refresh-btn" title="새로고침">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="responses-content" id="responses-content">
@@ -137,6 +154,9 @@
                             <h2>응답 대기 중</h2>
                             <p>아직 응답이 없습니다. 설문지를 공유하여 응답을 받아보세요.</p>
                         </div>
+
+                        <!-- 응답 통계 -->
+                        <div class="responses-stats-container" id="responses-stats-container" style="display: none;"></div>
 
                         <!-- 응답 테이블 -->
                         <div class="responses-table-container" id="responses-table-container" style="display: none;">
@@ -178,6 +198,26 @@
                                     <input type="checkbox" id="setting-allow-edit" />
                                     <span class="toggle-slider"></span>
                                 </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">기간</h3>
+
+                            <div class="settings-option settings-option-vertical">
+                                <div class="settings-option-info">
+                                    <span class="settings-option-label">설문 시작일</span>
+                                    <span class="settings-option-description">설정하지 않으면 즉시 응답 가능합니다</span>
+                                </div>
+                                <input type="datetime-local" id="setting-start-at" class="settings-datetime-input" />
+                            </div>
+
+                            <div class="settings-option settings-option-vertical">
+                                <div class="settings-option-info">
+                                    <span class="settings-option-label">설문 종료일</span>
+                                    <span class="settings-option-description">설정하지 않으면 기간 제한이 없습니다</span>
+                                </div>
+                                <input type="datetime-local" id="setting-end-at" class="settings-datetime-input" />
                             </div>
                         </div>
 
@@ -243,7 +283,25 @@
         </div>
     </div>
 
-    <script src="js/api.js?v=35"></script>
-    <script src="js/app.js?v=34"></script>
+    <!-- Response Detail Modal -->
+    <div class="modal-overlay" id="response-detail-modal" aria-hidden="true" style="display:none;">
+        <div class="modal-container modal-container-wide" role="dialog" aria-labelledby="response-detail-title" aria-modal="true">
+            <div class="modal-header">
+                <h2 class="modal-title" id="response-detail-title">응답 상세</h2>
+                <button class="modal-close-btn" id="response-detail-close-btn" aria-label="닫기">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body" id="response-detail-body">
+                <!-- Response detail content rendered here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="js/api.js?v=36"></script>
+    <script src="js/app.js?v=36"></script>
 </body>
 </html>

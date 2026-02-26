@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -25,6 +26,8 @@ public class PublicFormResponse {
     private Long id;
     private String title;
     private String description;
+    private LocalDateTime startAt;
+    private LocalDateTime endAt;
     private List<PublicSectionResponse> sections;
     private List<PublicQuestionResponse> questions;
 
@@ -57,6 +60,8 @@ public class PublicFormResponse {
                 .id(form.getId())
                 .title(form.getTitle())
                 .description(form.getDescription())
+                .startAt(form.getStartAt())
+                .endAt(form.getEndAt())
                 .sections(sectionResponses)
                 .questions(questionResponses)
                 .settings(settings)

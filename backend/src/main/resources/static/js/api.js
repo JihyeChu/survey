@@ -220,9 +220,10 @@
                 result = await FormAPI.create(formData);
             }
 
-            // publishedId 저장
+            // publishedId 저장 및 상태를 published로 변경
             form.publishedId = result.id;
             form.publishedAt = new Date().toISOString();
+            form.status = window.FormApp?.FORM_STATUS?.PUBLISHED || 'published';
 
             // 서버에서 반환된 질문 ID를 serverId로 저장 (첨부파일 업로드에 필요)
             // 섹션 구조가 있는 경우
@@ -267,6 +268,7 @@
                 });
             }
 
+            window.FormApp?.deleteDraftForm(form.id, true); // skipCurrentFormReset=true: 게시 후 현재 폼 유지
             window.FormApp?.saveForm(form);
 
             // 대기 중인 첨부파일 업로드
@@ -304,19 +306,56 @@
                 return;
             }
 
+            // serverId가 없는 질문이 있으면 서버에서 최신 정보를 가져와 보완
+            const hasMissingServerId = questionsWithPending.some(q => !q.serverId);
+            if (hasMissingServerId && form.publishedId) {
+                try {
+                    const freshServerForm = await FormAPI.get(form.publishedId);
+                    // 서버 질문 flat list
+                    const serverQFlat = [];
+                    if (freshServerForm.sections && freshServerForm.sections.length > 0) {
+                        freshServerForm.sections.forEach(s => (s.questions || []).forEach(q => serverQFlat.push(q)));
+                    } else {
+                        (freshServerForm.questions || []).forEach(q => serverQFlat.push(q));
+                    }
+                    // 로컬 질문 flat list (순서 파악용)
+                    const localQFlat = [];
+                    if (form.sections && form.sections.length > 0) {
+                        form.sections.forEach(s => (s.questions || []).forEach(q => localQFlat.push(q)));
+                    } else {
+                        (form.questions || []).forEach(q => localQFlat.push(q));
+                    }
+                    // 인덱스 기반으로 serverId 복구
+                    questionsWithPending = questionsWithPending.map(q => {
+                        if (!q.serverId) {
+                            const localIdx = localQFlat.findIndex(lq => lq.id === q.id);
+                            if (localIdx >= 0 && serverQFlat[localIdx]) {
+                                console.log('[첨부파일] serverId 복구:', q.id, '→', serverQFlat[localIdx].id);
+                                return { ...q, serverId: serverQFlat[localIdx].id };
+                            }
+                        }
+                        return q;
+                    });
+                } catch (e) {
+                    console.warn('[첨부파일] 서버 질문 ID 조회 실패:', e.message);
+                }
+            }
+
             const failedUploads = [];
 
             for (const question of questionsWithPending) {
+                const fname = question.attachmentFilename || question.pendingAttachment?.filename || question.id;
+
                 if (!question.serverId) {
-                    console.warn('질문에 serverId가 없어 첨부파일 업로드를 건너뜁니다:', question.id);
-                    failedUploads.push(question.attachmentFilename || question.id);
+                    console.warn('[첨부파일] serverId 복구 실패:', question.id);
+                    failedUploads.push(`${fname} (원인: serverId 없음)`);
                     continue;
                 }
 
                 // base64Data가 없으면 건너뜀 (localStorage 용량 초과로 제거된 경우)
                 if (!question.pendingAttachment.base64Data) {
-                    console.warn('첨부파일 base64 데이터가 없습니다 (localStorage 용량 초과 가능성):', question.id);
-                    failedUploads.push(question.attachmentFilename || question.id);
+                    console.warn('[첨부파일] base64 데이터 없음:', question.id);
+                    failedUploads.push(`${fname} (원인: 파일 데이터 손실)`);
                     continue;
                 }
 
@@ -331,6 +370,8 @@
                     // 서버에 업로드
                     const formData = new FormData();
                     formData.append('file', file);
+
+                    console.log('[첨부파일] 업로드 시도:', `/api/forms/${form.publishedId}/questions/${question.serverId}/attachment`, '파일:', file.name, file.type, file.size);
 
                     const response = await fetch(`/api/forms/${form.publishedId}/questions/${question.serverId}/attachment`, {
                         method: 'POST',
@@ -378,8 +419,8 @@
                     }
 
                 } catch (error) {
-                    console.error('첨부파일 업로드 실패:', question.id, error);
-                    failedUploads.push(question.attachmentFilename || question.id);
+                    console.error('[첨부파일] 업로드 실패:', question.id, '| serverId:', question.serverId, '| publishedId:', form.publishedId, '| 오류:', error.message);
+                    failedUploads.push(`${fname} (원인: ${error.message})`);
                 }
             }
 
@@ -392,8 +433,7 @@
 
             // 실패한 업로드 사용자에게 알림
             if (failedUploads.length > 0) {
-                const failedNames = failedUploads.join(', ');
-                alert(`다음 질문의 첨부파일 업로드에 실패했습니다:\n${failedNames}\n\n지원되지 않는 파일 형식이거나 파일 크기가 너무 클 수 있습니다. 첨부파일을 제거하고 다시 시도해 주세요.`);
+                alert(`첨부파일 업로드에 실패했습니다:\n${failedUploads.join('\n')}`);
             }
         },
 
@@ -462,6 +502,8 @@
                 title: form.title,
                 description: form.description || '',
                 settings: form.settings || {},
+                startAt: form.startAt || null,
+                endAt: form.endAt || null,
                 // 섹션이 있으면 섹션 구조로 전송
                 ...(form.sections && form.sections.length > 0 && {
                     sections: form.sections.map((section, sectionIdx) => ({
@@ -519,6 +561,7 @@
 
                 return {
                     id: q.id,
+                    serverId: q.id,  // 서버에서 로드된 질문은 id === serverId
                     type: q.type,
                     title: q.title,
                     description: q.description || '',
@@ -556,6 +599,8 @@
                 updatedAt: serverForm.updatedAt,
                 publishedAt: new Date().toISOString(),
                 settings: parsedSettings,
+                startAt: serverForm.startAt || null,
+                endAt: serverForm.endAt || null,
                 responses: [],
                 questions: [],
                 sections: [],

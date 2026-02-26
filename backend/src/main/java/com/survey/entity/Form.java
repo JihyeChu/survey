@@ -30,6 +30,12 @@ public class Form {
     @Column(columnDefinition = "JSON")
     private String settings;
 
+    @Column(nullable = true)
+    private LocalDateTime startAt;
+
+    @Column(nullable = true)
+    private LocalDateTime endAt;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
