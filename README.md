@@ -791,8 +791,8 @@ CREATE DATABASE google_form_clone CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_
 `backend/` 디렉토리에 `.env` 파일을 생성합니다. (`.env.example` 참고)
 
 ```env
-DB_URL=jdbc:mysql://localhost:3306/google_form_clone
-DB_USERNAME=root
+DB_URL=your_db_url_here
+DB_USERNAME=your_username_here
 DB_PASSWORD=your_password_here
 ```
 
